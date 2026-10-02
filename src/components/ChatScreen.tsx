@@ -7,6 +7,7 @@ import { ProfileMenuDropdown } from './ProfileMenuDropdown';
 import { OnlinePlayersPanel } from './OnlinePlayersPanel';
 import { ProfileModal } from './ProfileModal';
 import { ChatBackgroundModal } from './ChatBackgroundModal';
+import { AvatarWithBorder } from './AvatarWithBorder';
 import { handleChatCommand } from '../utils/commandHandler';
 import { isFounderOrAbove } from '../utils/permissions';
 import { addAuditLog } from '../utils/auditLogger';
@@ -216,24 +217,21 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           chatlaxy
         </span>
 
-        {/* Top Right: ONLY the user's profile picture */}
+        {/* Top Right: ONLY the user's profile picture with Custom PFP Border */}
         <div className="flex items-center">
           <button
             type="button"
             onClick={() => setIsProfileMenuOpen((prev) => !prev)}
             aria-label="Open profile menu"
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-[#242630] border-2 border-[#373946] hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-zinc-400 transition-all flex items-center justify-center cursor-pointer shadow-sm"
+            className="cursor-pointer focus:outline-none focus:ring-2 focus:ring-zinc-400 rounded-full transition-all"
           >
-            {currentUser.profilePicture ? (
-              <img
-                src={currentUser.profilePicture}
-                alt={currentUser.username}
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <User className="w-5 h-5 text-neutral-400" />
-            )}
+            <AvatarWithBorder
+              src={currentUser.profilePicture}
+              borderId={currentUser.effects?.pfpBorder || currentUser.pfpBorder}
+              alt={currentUser.username}
+              size="sm"
+              shape="circle"
+            />
           </button>
         </div>
 
@@ -284,6 +282,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
                   // Alternating background: even is slightly lighter dark, odd is darker underneath
                   const isAlternateBg = index % 2 === 1;
 
+                  const senderBorder = msg.isSystemBot
+                    ? null
+                    : (isCurrentUser
+                        ? (currentUser.effects?.pfpBorder || currentUser.pfpBorder)
+                        : (allUsers[msg.senderName.toLowerCase().trim()]?.effects?.pfpBorder ||
+                           allUsers[msg.senderName.toLowerCase().trim()]?.pfpBorder || null));
+
                   return (
                     <ChatMessageItem
                       key={msg.id}
@@ -291,6 +296,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
                       isCurrentUser={isCurrentUser}
                       isAlternateBg={isAlternateBg}
                       canModerate={isFounderOrAbove(currentUser)}
+                      senderBorder={senderBorder}
                       onReply={handleReply}
                       onHide={handleHide}
                       onDelete={handleDelete}

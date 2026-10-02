@@ -3,19 +3,22 @@ import {
   X,
   Camera,
   Edit2,
-  User,
   ChevronLeft,
   ChevronRight,
   Check,
+  Sparkles,
+  LayoutGrid,
 } from 'lucide-react';
 import { ProfileData } from '../types/bio';
 import { SYSTEM_BOT } from '../constants/systemBot';
 import { getRankConfig } from '../constants/ranks';
+import { BORDERS, getBorderByIdOrName } from '../constants/borders';
 import { RankId } from '../types/ranks';
 import { isFounderOrAbove } from '../utils/permissions';
 import { addAuditLog } from '../utils/auditLogger';
 import { uploadImageToCloudinary } from '../utils/cloudinary';
 import { saveUserToFirestore, getUserFromFirestore } from '../services/firestoreService';
+import { AvatarWithBorder } from './AvatarWithBorder';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -27,7 +30,8 @@ interface ProfileModalProps {
 }
 
 type ProfileTab = 'info' | 'about_me';
-type EditMode = 'view' | 'edit_menu' | 'edit_info' | 'edit_bio' | 'edit_mood';
+type EditMode = 'view' | 'edit_menu' | 'edit_info' | 'edit_customisation' | 'edit_bio' | 'edit_mood';
+type CustomiseView = 'single' | 'grid';
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
   isOpen,
@@ -39,9 +43,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<ProfileTab>('info');
   const [editMode, setEditMode] = useState<EditMode>('view');
+  const [customiseView, setCustomiseView] = useState<CustomiseView>('single');
 
   // Active profile state
   const [activeProfile, setActiveProfile] = useState<ProfileData>(currentUser);
+
+  // Border Customisation state
+  const [selectedBorderIndex, setSelectedBorderIndex] = useState<number>(0);
+  const [justEquipped, setJustEquipped] = useState(false);
 
   // Form states for in-profile editor
   const [editUsername, setEditUsername] = useState(currentUser.username);
@@ -69,6 +78,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         age: '999',
         gender: '',
         rank: 'BOT',
+        pfpBorder: null,
       });
       return;
     }
@@ -78,6 +88,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       targetUserId.toLowerCase().trim() === currentUser.username.toLowerCase().trim()
     ) {
       setActiveProfile(currentUser);
+      const currentBorder = currentUser.effects?.pfpBorder || currentUser.pfpBorder;
+      const borderItem = getBorderByIdOrName(currentBorder);
+      if (borderItem) {
+        setSelectedBorderIndex(borderItem.index);
+      }
       return;
     }
 
@@ -86,8 +101,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     const liveMatch = allUsers[cleanTarget];
     if (liveMatch) {
       setActiveProfile(liveMatch);
+      const currentBorder = liveMatch.effects?.pfpBorder || liveMatch.pfpBorder;
+      const borderItem = getBorderByIdOrName(currentBorder);
+      if (borderItem) {
+        setSelectedBorderIndex(borderItem.index);
+      }
     } else {
-      // Set initial placeholder while fetching from Firestore
       setActiveProfile({
         username: targetUserId,
         profilePicture: null,
@@ -95,6 +114,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         mood: '',
         bioSegments: [],
         rank: 'VIP',
+        pfpBorder: null,
       });
     }
 
@@ -103,6 +123,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       .then((doc) => {
         if (doc) {
           setActiveProfile(doc);
+          const currentBorder = doc.effects?.pfpBorder || doc.pfpBorder;
+          const borderItem = getBorderByIdOrName(currentBorder);
+          if (borderItem) {
+            setSelectedBorderIndex(borderItem.index);
+          }
         }
       })
       .catch((err) => {
@@ -117,12 +142,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setEditGender(activeProfile.gender || '');
     setEditMood(activeProfile.mood || '');
     setEditBio(activeProfile.bioSegments?.map((s) => s.text).join('') || '');
+
+    const currentBorder = activeProfile.effects?.pfpBorder || activeProfile.pfpBorder;
+    const borderItem = getBorderByIdOrName(currentBorder);
+    if (borderItem) {
+      setSelectedBorderIndex(borderItem.index);
+    }
   }, [activeProfile, editMode]);
 
   // Reset editMode when opening / switching profiles
   useEffect(() => {
     setEditMode('view');
     setActiveTab('info');
+    setCustomiseView('single');
   }, [targetUserId, isOpen]);
 
   if (!isOpen || !targetUserId) return null;
@@ -289,6 +321,36 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setEditMode('view');
   };
 
+  // Carousel navigation for borders
+  const handlePrevBorder = () => {
+    setSelectedBorderIndex((prev) => (prev > 0 ? prev - 1 : BORDERS.length - 1));
+  };
+
+  const handleNextBorder = () => {
+    setSelectedBorderIndex((prev) => (prev < BORDERS.length - 1 ? prev + 1 : 0));
+  };
+
+  // Select / Equip current border
+  const handleSelectBorder = (borderIdToEquip?: string | null) => {
+    if (!isOwner) return;
+    const borderId = borderIdToEquip !== undefined ? borderIdToEquip : BORDERS[selectedBorderIndex]?.id;
+    const updated: ProfileData = {
+      ...activeProfile,
+      pfpBorder: borderId || null,
+      effects: {
+        ...(activeProfile.effects || {}),
+        pfpBorder: borderId || undefined,
+      },
+    };
+    saveProfileData(updated, `PFP border to "${borderId || 'None'}"`);
+    setJustEquipped(true);
+    setTimeout(() => setJustEquipped(false), 2000);
+  };
+
+  const currentEquippedBorderId = activeProfile.effects?.pfpBorder || activeProfile.pfpBorder;
+  const currentPreviewBorder = BORDERS[selectedBorderIndex] || BORDERS[0];
+  const isSelectedBorderEquipped = currentEquippedBorderId === currentPreviewBorder?.id;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
       {/* Click backdrop to close */}
@@ -407,31 +469,27 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         {/* PROFILE DETAILS CONTAINER                         */}
         {/* ================================================== */}
         <div className="px-5 pt-0 pb-5 relative flex flex-col flex-1">
-          {/* Avatar Area with Sharp Square Frame */}
+          {/* Avatar Area: Shows custom PFP border in VIEW mode */}
           <div className="relative -mt-10 mb-3 flex items-end justify-between">
             <div className="relative group shrink-0">
-              {/* Square Avatar container */}
-              <div className="w-20 h-20 rounded-xs border-2 border-[#141519] bg-[#22242c] overflow-hidden flex items-center justify-center shadow-lg ring-1 ring-[#3a3b48]">
-                {activeProfile.profilePicture ? (
-                  <img
-                    src={activeProfile.profilePicture}
-                    alt={activeProfile.username}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User className="w-10 h-10 text-neutral-400" />
-                )}
-              </div>
+              {/* Avatar with PFP Border (NOT shown in editor mode to keep upload clean) */}
+              <AvatarWithBorder
+                src={activeProfile.profilePicture}
+                borderId={currentEquippedBorderId}
+                alt={activeProfile.username}
+                size="2xl"
+                shape="circle"
+                showBorder={editMode === 'view'}
+              />
 
-              {/* PFP Controls in edit mode */}
+              {/* PFP Upload Controls in edit mode */}
               {canEdit && editMode !== 'view' && (
-                <div className="absolute -bottom-1 -right-1 flex items-center gap-1 bg-[#141519]/90 p-0.5 rounded-xs border border-[#343644] shadow-md z-10">
+                <div className="absolute -bottom-1 -right-1 flex items-center gap-1 bg-[#141519]/90 p-0.5 rounded-full border border-[#343644] shadow-md z-20">
                   <button
                     type="button"
                     onClick={() => pfpInputRef.current?.click()}
                     title="Change profile picture"
-                    className="p-1 bg-[#252732] hover:bg-[#343646] text-neutral-200 hover:text-white rounded-xs transition-colors cursor-pointer"
+                    className="p-1 bg-[#252732] hover:bg-[#343646] text-neutral-200 hover:text-white rounded-full transition-colors cursor-pointer"
                   >
                     <Camera className="w-3 h-3" />
                   </button>
@@ -440,7 +498,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       type="button"
                       onClick={handleRemovePfp}
                       title="Remove profile picture"
-                      className="p-1 bg-[#252732] hover:bg-[#343646] text-neutral-200 hover:text-red-400 rounded-xs transition-colors cursor-pointer"
+                      className="p-1 bg-[#252732] hover:bg-[#343646] text-neutral-200 hover:text-red-400 rounded-full transition-colors cursor-pointer"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -485,7 +543,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
 
           {/* ================================================== */}
-          {/* A. NORMAL VIEW MODE                                */}
+          {/* A. NORMAL VIEW MODE (ONLY Info & About Me)         */}
           {/* ================================================== */}
           {editMode === 'view' && (
             <>
@@ -502,6 +560,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 >
                   Info
                 </button>
+
                 {hasBio && (
                   <button
                     type="button"
@@ -593,6 +652,24 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   </button>
                 )}
 
+                {/* Customisation option ONLY on own profile */}
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomiseView('single');
+                      setEditMode('edit_customisation');
+                    }}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Customisation</span>
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setEditMode('edit_bio')}
@@ -615,7 +692,202 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           )}
 
           {/* ================================================== */}
-          {/* C. EDIT INFO FORM (OWNER ONLY)                     */}
+          {/* C. CUSTOMISATION EDITOR (OWNER ONLY)               */}
+          {/* ================================================== */}
+          {editMode === 'edit_customisation' && isOwner && (
+            <div className="flex flex-col animate-in fade-in duration-150 text-left">
+              {customiseView === 'single' ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-full flex items-center justify-between border-b border-[#25262f] pb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                      Customise Border
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEditMode('edit_menu')}
+                      className="text-xs text-neutral-400 hover:text-neutral-200 cursor-pointer"
+                    >
+                      Done
+                    </button>
+                  </div>
+
+                  {/* Profile Card Preview in Middle */}
+                  <div className="w-full bg-[#181a22] border border-[#2a2c38] rounded-md p-3.5 flex items-center gap-3.5 shadow-lg relative overflow-hidden">
+                    {/* Avatar with Previewed Border */}
+                    <AvatarWithBorder
+                      src={activeProfile.profilePicture}
+                      borderId={currentPreviewBorder.id}
+                      alt={activeProfile.username}
+                      size="xl"
+                      shape="circle"
+                    />
+
+                    {/* Card Info */}
+                    <div className="flex flex-col min-w-0 flex-1">
+                      {rankConfig && (
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <img
+                            src={rankConfig.iconUrl}
+                            alt={rankConfig.name}
+                            className="w-3.5 h-3.5 object-contain"
+                          />
+                          <span className="text-[11px] font-bold text-white tracking-wide">
+                            {rankConfig.name}
+                          </span>
+                        </div>
+                      )}
+                      <span className="text-sm font-bold text-neutral-100 truncate">
+                        {activeProfile.username}
+                      </span>
+                      <span className="text-xs text-neutral-400 truncate">
+                        {activeProfile.mood ? `"${activeProfile.mood}"` : 'Chatting on chatlaxy'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Carousel Selector: < [Border Name] > */}
+                  <div className="w-full flex items-center justify-between bg-[#121318] border border-[#282a36] rounded-md p-1.5 mt-0.5">
+                    <button
+                      type="button"
+                      onClick={handlePrevBorder}
+                      aria-label="Previous border"
+                      className="p-2 hover:bg-[#20222e] text-neutral-400 hover:text-white rounded transition-colors cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    <div className="flex flex-col items-center text-center px-2 min-w-0 flex-1">
+                      <span className="text-xs sm:text-sm font-bold text-neutral-100 truncate">
+                        {currentPreviewBorder.name}
+                      </span>
+                      <span className="text-[10px] text-neutral-400 font-mono">
+                        Row {currentPreviewBorder.row + 1} &bull; {selectedBorderIndex + 1}/{BORDERS.length}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleNextBorder}
+                      aria-label="Next border"
+                      className="p-2 hover:bg-[#20222e] text-neutral-400 hover:text-white rounded transition-colors cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* < view grid > button */}
+                  <button
+                    type="button"
+                    onClick={() => setCustomiseView('grid')}
+                    className="text-xs text-purple-400 hover:text-purple-300 font-medium tracking-wide flex items-center gap-1.5 py-1 px-3 rounded hover:bg-purple-950/30 transition-colors cursor-pointer"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>&lt; view grid &gt;</span>
+                  </button>
+
+                  {/* [select] Button */}
+                  <div className="w-full flex items-center gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectBorder(currentPreviewBorder.id)}
+                      className={`w-full py-2 px-4 rounded font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        isSelectedBorderEquipped
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-zinc-200 hover:bg-white text-zinc-950 shadow-sm'
+                      }`}
+                    >
+                      {justEquipped ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Equipped!</span>
+                        </>
+                      ) : isSelectedBorderEquipped ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Equipped</span>
+                        </>
+                      ) : (
+                        <span>[ Select ]</span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Option to clear border */}
+                  {currentEquippedBorderId && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectBorder(null)}
+                      className="text-[11px] text-red-400 hover:text-red-300 underline cursor-pointer"
+                    >
+                      Remove Border
+                    </button>
+                  )}
+                </div>
+              ) : (
+                /* Grid View: 5 in each row */
+                <div className="flex flex-col gap-2">
+                  {/* Grid Header */}
+                  <div className="flex items-center justify-between pb-1.5 border-b border-[#25262f]">
+                    <span className="text-xs font-bold text-neutral-200">
+                      Profile Borders (5 in each row)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCustomiseView('single')}
+                      className="text-xs text-purple-400 hover:text-purple-300 font-medium cursor-pointer"
+                    >
+                      &lt; Back to preview
+                    </button>
+                  </div>
+
+                  {/* 5-Column Grid */}
+                  <div className="grid grid-cols-5 gap-2 max-h-[260px] overflow-y-auto p-1 border border-[#23252f] rounded-md bg-[#101115]">
+                    {BORDERS.map((border) => {
+                      const isSelected = selectedBorderIndex === border.index;
+                      const isEquipped = currentEquippedBorderId === border.id;
+
+                      return (
+                        <button
+                          key={border.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedBorderIndex(border.index);
+                            setCustomiseView('single');
+                          }}
+                          title={border.name}
+                          className={`flex flex-col items-center p-1 rounded-sm border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-purple-950/50 border-purple-500 ring-1 ring-purple-500'
+                              : isEquipped
+                              ? 'bg-[#1e202a] border-emerald-500/80'
+                              : 'bg-[#171820] border-[#2c2d38] hover:border-zinc-500'
+                          }`}
+                        >
+                          {/* Thumbnail preview */}
+                          <div className="w-10 h-10 relative flex items-center justify-center">
+                            <AvatarWithBorder
+                              src={activeProfile.profilePicture}
+                              borderId={border.id}
+                              size="sm"
+                              shape="circle"
+                            />
+                          </div>
+
+                          {/* Border Name */}
+                          <span className="text-[9px] text-neutral-300 font-medium text-center truncate w-full mt-1">
+                            {border.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ================================================== */}
+          {/* D. EDIT INFO FORM (OWNER ONLY)                     */}
           {/* ================================================== */}
           {editMode === 'edit_info' && isOwner && (
             <div className="flex flex-col gap-2.5 animate-in fade-in duration-100">
@@ -689,7 +961,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           )}
 
           {/* ================================================== */}
-          {/* D. EDIT BIO FORM                                   */}
+          {/* E. EDIT BIO FORM                                   */}
           {/* ================================================== */}
           {editMode === 'edit_bio' && (
             <div className="flex flex-col gap-2.5 animate-in fade-in duration-100">
@@ -740,7 +1012,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           )}
 
           {/* ================================================== */}
-          {/* E. EDIT MOOD FORM                                  */}
+          {/* F. EDIT MOOD FORM                                  */}
           {/* ================================================== */}
           {editMode === 'edit_mood' && (
             <div className="flex flex-col gap-2.5 animate-in fade-in duration-100">

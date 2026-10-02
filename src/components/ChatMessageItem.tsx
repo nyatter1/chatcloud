@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MoreHorizontal, CornerUpLeft, EyeOff, Trash2, User, Bot } from 'lucide-react';
+import { MoreHorizontal, CornerUpLeft, EyeOff, Trash2 } from 'lucide-react';
 import { ChatMessage } from '../types/chat';
 import { RubyIcon, GoldIcon } from './CurrencyIcons';
+import { AvatarWithBorder } from './AvatarWithBorder';
 
 interface ChatMessageItemProps {
   message: ChatMessage;
   isCurrentUser: boolean;
   isAlternateBg: boolean;
   canModerate?: boolean;
+  senderBorder?: string | null;
   onReply: (message: ChatMessage) => void;
   onHide: (id: string) => void;
   onDelete: (id: string) => void;
@@ -19,6 +21,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   isCurrentUser,
   isAlternateBg,
   canModerate,
+  senderBorder,
   onReply,
   onHide,
   onDelete,
@@ -62,25 +65,21 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
       className={`group relative w-full px-4 sm:px-6 py-3 sm:py-3.5 transition-colors duration-100 ${bgClass} hover:brightness-125 backdrop-blur-[1px]`}
     >
       <div className="flex items-start gap-3 w-full">
-        {/* Avatar - Clickable to open Profile */}
+        {/* Avatar with Border - Clickable to open Profile */}
         <button
           type="button"
           onClick={handleProfileClick}
           title={`View ${message.senderName}'s profile`}
-          className="w-9 h-9 sm:w-10 sm:h-10 rounded-sm overflow-hidden bg-[#242630] border border-[#343644] hover:border-zinc-400 shrink-0 flex items-center justify-center cursor-pointer transition-colors focus:outline-none"
+          className="shrink-0 cursor-pointer focus:outline-none"
         >
-          {message.senderAvatar ? (
-            <img
-              src={message.senderAvatar}
-              alt={message.senderName}
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-cover"
-            />
-          ) : message.isSystemBot ? (
-            <Bot className="w-5 h-5 text-purple-400" />
-          ) : (
-            <User className="w-5 h-5 text-neutral-400" />
-          )}
+          <AvatarWithBorder
+            src={message.senderAvatar}
+            borderId={senderBorder}
+            alt={message.senderName}
+            size="md"
+            isSystemBot={message.isSystemBot}
+            shape="circle"
+          />
         </button>
 
         {/* Message Body */}
