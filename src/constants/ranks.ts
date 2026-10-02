@@ -43,31 +43,31 @@ export const RANKS: Record<RankId, RankConfig> = {
     iconUrl: 'https://raw.githubusercontent.com/nyatter1/ranks/main/mod.png',
     order: 7,
   },
-  ELITE: {
-    id: 'ELITE',
-    name: 'Elite',
-    iconUrl: 'https://raw.githubusercontent.com/nyatter1/ranks/main/elite.png',
-    order: 8,
-  },
-  'SUPER-VIP': {
-    id: 'SUPER-VIP',
-    name: 'Super VIP',
-    iconUrl: 'https://raw.githubusercontent.com/nyatter1/ranks/main/super-vip.gif',
-    order: 9,
-  },
-  VIP: {
-    id: 'VIP',
-    name: 'VIP',
-    iconUrl: 'https://raw.githubusercontent.com/nyatter1/ranks/main/vip.gif',
-    order: 10,
-  },
   BOT: {
     id: 'BOT',
     name: 'Bot',
     iconUrl:
       'https://imgs.search.brave.com/5Ebh-NK4qGF2KY6Y9d21mN2KJBDbcDiTSNbxAH2CcKM/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly91eHdp/bmcuY29tL3dwLWNv/bnRlbnQvdGhlbWVz/L3V4d2luZy9kb3du/bG9hZC9icmFuZHMt/YW5kLXNvY2lhbC1t/ZWRpYS9hbmRyb2lk/LXJvYm90LWJvdC1p/Y29uLnBuZw',
-    order: 99,
+    order: 8,
     isSpecialBot: true,
+  },
+  ELITE: {
+    id: 'ELITE',
+    name: 'Elite',
+    iconUrl: 'https://raw.githubusercontent.com/nyatter1/ranks/main/elite.png',
+    order: 9,
+  },
+  'SUPER-VIP': {
+    id: 'SUPER-VIP',
+    name: 'Super VIP',
+    iconUrl: 'https://raw.githubusercontent.com/nyatter1/ranks/main/super-vip.gif',
+    order: 10,
+  },
+  VIP: {
+    id: 'VIP',
+    name: 'VIP',
+    iconUrl: 'https://raw.githubusercontent.com/nyatter1/ranks/main/vip.gif',
+    order: 11,
   },
 };
 

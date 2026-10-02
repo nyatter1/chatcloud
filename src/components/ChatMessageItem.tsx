@@ -11,6 +11,7 @@ interface ChatMessageItemProps {
   onReply: (message: ChatMessage) => void;
   onHide: (id: string) => void;
   onDelete: (id: string) => void;
+  onOpenProfile?: (username: string) => void;
 }
 
 export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
@@ -21,6 +22,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   onReply,
   onHide,
   onDelete,
+  onOpenProfile,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -45,13 +47,28 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     ? 'bg-[#101115]/50 border-b border-[#252631]/40'
     : 'bg-[#16171d]/50 border-b border-[#2a2c38]/40';
 
+  const handleProfileClick = () => {
+    if (onOpenProfile) {
+      if (message.isSystemBot) {
+        onOpenProfile('system');
+      } else {
+        onOpenProfile(message.senderName);
+      }
+    }
+  };
+
   return (
     <div
       className={`group relative w-full px-4 sm:px-6 py-3 sm:py-3.5 transition-colors duration-100 ${bgClass} hover:brightness-125 backdrop-blur-[1px]`}
     >
       <div className="flex items-start gap-3 w-full">
-        {/* Avatar */}
-        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-sm overflow-hidden bg-[#242630] border border-[#343644] shrink-0 flex items-center justify-center">
+        {/* Avatar - Clickable to open Profile */}
+        <button
+          type="button"
+          onClick={handleProfileClick}
+          title={`View ${message.senderName}'s profile`}
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-sm overflow-hidden bg-[#242630] border border-[#343644] hover:border-zinc-400 shrink-0 flex items-center justify-center cursor-pointer transition-colors focus:outline-none"
+        >
           {message.senderAvatar ? (
             <img
               src={message.senderAvatar}
@@ -64,19 +81,21 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
           ) : (
             <User className="w-5 h-5 text-neutral-400" />
           )}
-        </div>
+        </button>
 
         {/* Message Body */}
         <div className="flex-1 min-w-0 pr-8">
           {/* Header: Name, Timestamp */}
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span
-              className={`text-xs sm:text-sm font-semibold truncate ${
+            <button
+              type="button"
+              onClick={handleProfileClick}
+              className={`text-xs sm:text-sm font-semibold truncate hover:underline cursor-pointer text-left focus:outline-none ${
                 message.isSystemBot ? 'text-purple-300' : 'text-neutral-100'
               }`}
             >
               {message.senderName}
-            </span>
+            </button>
 
             {/* Timestamp */}
             <span className="text-[11px] text-neutral-500 font-mono">
@@ -88,149 +107,119 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
           {message.gamblePayload ? (
             <div className="w-full flex justify-center my-2">
               <div className="relative w-full max-w-md bg-[#161720]/90 border border-[#2b2d3c] rounded-md p-4 shadow-xl text-center flex flex-col items-center gap-2.5">
-                {/* Top Corner Multiplier Badge: x[1-100] */}
+                {/* Header title */}
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  {message.gamblePayload.command === 'dice' ? '🎲 Dice Roll' : '🎰 All-In Gamble'}
+                </span>
+
+                {/* Outcome Badge */}
                 <div
-                  className={`absolute top-2.5 right-3 px-2 py-0.5 rounded text-xs font-black font-mono tracking-wider border shadow-sm ${
+                  className={`px-3 py-1 rounded-sm text-xs font-bold tracking-wide ${
                     message.gamblePayload.won
-                      ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
-                      : 'bg-[#22161a]/90 text-neutral-400 border-[#3d232a]'
+                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-700/60'
+                      : 'bg-red-950/80 text-red-400 border border-red-700/60'
                   }`}
                 >
-                  {message.gamblePayload.won
-                    ? `x${message.gamblePayload.multiplier}`
-                    : 'x0'}
+                  {message.gamblePayload.won ? 'VICTORY' : 'DEFEAT'}
                 </div>
 
-                {/* User info & command performed */}
-                <div className="flex items-center gap-2 flex-wrap justify-center pt-0.5">
-                  <div className="w-6 h-6 rounded-full overflow-hidden bg-[#242630] border border-[#373946] shrink-0 flex items-center justify-center">
-                    {message.gamblePayload.userAvatar ? (
-                      <img
-                        src={message.gamblePayload.userAvatar}
-                        alt={message.gamblePayload.username}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <User className="w-3.5 h-3.5 text-neutral-400" />
-                    )}
-                  </div>
-                  <span className="text-xs sm:text-sm font-bold text-neutral-100">
-                    {message.gamblePayload.username}
-                  </span>
-                  <span className="text-xs text-neutral-400">
-                    did{' '}
-                    <span className="text-purple-300 font-mono font-bold">
-                      /{message.gamblePayload.command.toUpperCase()}
+                {/* Roll Details / Multiplier */}
+                <div className="flex items-center justify-center gap-3 text-xs text-neutral-300">
+                  {message.gamblePayload.rollNumber !== undefined && (
+                    <span className="bg-[#20222e] px-2.5 py-1 rounded font-mono text-neutral-200">
+                      Roll: {message.gamblePayload.rollNumber}
                     </span>
-                  </span>
+                  )}
+                  {message.gamblePayload.multiplier && (
+                    <span className="bg-[#20222e] px-2.5 py-1 rounded font-mono text-purple-300">
+                      {message.gamblePayload.multiplier}x
+                    </span>
+                  )}
                 </div>
 
-                {/* Bet amount */}
-                <div className="flex items-center gap-1.5 text-xs text-neutral-300 font-medium bg-[#111218]/90 px-3 py-1 rounded border border-[#232532]">
-                  <span className="text-neutral-400">Bet:</span>
-                  {message.gamblePayload.currency === 'ruby' ? (
-                    <RubyIcon className="w-4 h-4" />
-                  ) : (
-                    <GoldIcon className="w-4 h-4" />
-                  )}
-                  <span className="font-mono font-bold text-white">
-                    {message.gamblePayload.betAmount.toLocaleString()}
+                {/* Currency Profit / Loss Summary */}
+                <div className="flex items-center justify-center gap-2 mt-1 font-semibold text-xs sm:text-sm">
+                  <span className="text-neutral-400">Outcome:</span>
+                  <span
+                    className={`flex items-center gap-1 font-bold ${
+                      message.gamblePayload.won ? 'text-emerald-400' : 'text-red-400'
+                    }`}
+                  >
+                    {message.gamblePayload.won ? '+' : '-'}
+                    {(message.gamblePayload.won
+                      ? message.gamblePayload.payoutAmount
+                      : message.gamblePayload.betAmount
+                    ).toLocaleString()}
+                    {message.gamblePayload.currency === 'ruby' ? (
+                      <RubyIcon className="w-3.5 h-3.5 inline" />
+                    ) : (
+                      <GoldIcon className="w-3.5 h-3.5 inline" />
+                    )}
                   </span>
-                  <span className="capitalize text-neutral-400">
-                    {message.gamblePayload.currency === 'ruby' ? 'Rubies' : 'Gold'}
-                  </span>
-                </div>
-
-                {/* Result: Won / Lost */}
-                <div className="w-full flex items-center justify-center pt-1">
-                  {message.gamblePayload.won ? (
-                    <div className="flex items-center gap-2 px-4 py-1.5 bg-emerald-950/70 border border-emerald-500/50 rounded text-emerald-300 text-xs sm:text-sm font-black tracking-wide">
-                      <span>WON</span>
-                      <span className="font-mono text-emerald-200">
-                        +{message.gamblePayload.payoutAmount.toLocaleString()}
-                      </span>
-                      {message.gamblePayload.currency === 'ruby' ? (
-                        <RubyIcon className="w-4 h-4" />
-                      ) : (
-                        <GoldIcon className="w-4 h-4" />
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 px-4 py-1.5 bg-red-950/60 border border-red-500/40 rounded text-red-400 text-xs sm:text-sm font-black tracking-wide">
-                      <span>LOST</span>
-                      <span className="font-mono text-red-300">
-                        -{message.gamblePayload.betAmount.toLocaleString()}
-                      </span>
-                      {message.gamblePayload.currency === 'ruby' ? (
-                        <RubyIcon className="w-4 h-4" />
-                      ) : (
-                        <GoldIcon className="w-4 h-4" />
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
           ) : (
-            /* Regular message content */
-            <p className="text-xs sm:text-sm text-neutral-200 leading-relaxed whitespace-pre-wrap break-words selection:bg-zinc-700">
+            /* Standard text message content */
+            <p className="text-xs sm:text-sm text-neutral-200 leading-relaxed break-words whitespace-pre-wrap select-text">
               {message.content}
             </p>
           )}
         </div>
+      </div>
 
-        {/* Three Dots Menu Button */}
-        <div className="absolute top-2.5 right-4 sm:right-6" ref={menuRef}>
+      {/* Hover Action Menu Button */}
+      <div className="absolute top-2.5 right-4 flex items-center gap-1 z-10">
+        <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={() => setMenuOpen((prev) => !prev)}
             aria-label="Message options"
-            className="p-1 text-neutral-400 hover:text-neutral-200 hover:bg-[#2b2d38] rounded-xs transition-colors opacity-70 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+            className="p-1 rounded-sm text-neutral-400 hover:text-neutral-100 hover:bg-[#252733] transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
           >
             <MoreHorizontal className="w-4 h-4" />
           </button>
 
-          {/* Dropdown Menu */}
+          {/* Action dropdown menu */}
           {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 z-30 w-32 bg-[#1b1c22] border border-[#323440] rounded-xs shadow-2xl shadow-black/80 py-1 text-xs text-neutral-200 flex flex-col animate-in fade-in duration-100">
+            <div className="absolute right-0 top-7 w-36 bg-[#181921] border border-[#2b2d39] rounded-md shadow-2xl shadow-black/80 py-1 z-50 text-left animate-in fade-in zoom-in-95 duration-100">
               {/* Reply */}
               <button
                 type="button"
                 onClick={() => {
-                  onReply(message);
                   setMenuOpen(false);
+                  onReply(message);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[#272933] hover:text-white transition-colors cursor-pointer"
+                className="w-full px-3 py-2 text-xs text-neutral-300 hover:text-white hover:bg-[#232532] flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <CornerUpLeft className="w-3.5 h-3.5 text-neutral-400" />
                 <span>Reply</span>
               </button>
 
-              {/* Hide */}
+              {/* Hide Message (Local) */}
               <button
                 type="button"
                 onClick={() => {
-                  onHide(message.id);
                   setMenuOpen(false);
+                  onHide(message.id);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[#272933] hover:text-white transition-colors cursor-pointer"
+                className="w-full px-3 py-2 text-xs text-neutral-300 hover:text-white hover:bg-[#232532] flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <EyeOff className="w-3.5 h-3.5 text-neutral-400" />
-                <span>Hide</span>
+                <span>Hide Message</span>
               </button>
 
-              {/* Delete - on own messages OR if user is founder/dev (canModerate) */}
+              {/* Delete Message (If author or Moderator/Dev) */}
               {(isCurrentUser || canModerate) && (
                 <button
                   type="button"
                   onClick={() => {
-                    onDelete(message.id);
                     setMenuOpen(false);
+                    onDelete(message.id);
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-[#2f2025] hover:text-red-300 transition-colors border-t border-[#292a34] mt-1 pt-1.5 cursor-pointer"
+                  className="w-full px-3 py-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/40 flex items-center gap-2 transition-colors border-t border-[#262834] mt-1 cursor-pointer"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
                   <span>Delete</span>
                 </button>
               )}

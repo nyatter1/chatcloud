@@ -15,12 +15,13 @@ import { RankId } from '../types/ranks';
 import { isFounderOrAbove } from '../utils/permissions';
 import { addAuditLog } from '../utils/auditLogger';
 import { uploadImageToCloudinary } from '../utils/cloudinary';
-import { saveUserToFirestore } from '../services/firestoreService';
+import { saveUserToFirestore, getUserFromFirestore } from '../services/firestoreService';
 
 interface ProfileModalProps {
   isOpen: boolean;
   targetUserId: string | null;
   currentUser: ProfileData;
+  allUsers?: Record<string, ProfileData>;
   onClose: () => void;
   onUpdateCurrentUser: (updated: ProfileData) => void;
 }
@@ -32,6 +33,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   isOpen,
   targetUserId,
   currentUser,
+  allUsers = {},
   onClose,
   onUpdateCurrentUser,
 }) => {
@@ -53,9 +55,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const pfpInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  // Load target profile whenever targetUserId or currentUser changes
+  // Load target profile from allUsers, currentUser, or live Firestore
   useEffect(() => {
-    if (!targetUserId) return;
+    if (!isOpen || !targetUserId) return;
 
     if (targetUserId === 'system') {
       setActiveProfile({
@@ -68,40 +70,45 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         gender: '',
         rank: 'BOT',
       });
-    } else if (
+      return;
+    }
+
+    if (
       targetUserId === 'current_user' ||
-      targetUserId.toLowerCase() === currentUser.username.toLowerCase()
+      targetUserId.toLowerCase().trim() === currentUser.username.toLowerCase().trim()
     ) {
       setActiveProfile(currentUser);
-    } else {
-      try {
-        const raw = localStorage.getItem('chatcloud_users');
-        const accounts: Record<string, ProfileData> = raw ? JSON.parse(raw) : {};
-        const found = accounts[targetUserId.toLowerCase()];
-        if (found) {
-          setActiveProfile(found);
-        } else {
-          setActiveProfile({
-            username: targetUserId,
-            profilePicture: null,
-            banner: null,
-            mood: '',
-            bioSegments: [],
-            rank: 'VIP',
-          });
-        }
-      } catch {
-        setActiveProfile({
-          username: targetUserId,
-          profilePicture: null,
-          banner: null,
-          mood: '',
-          bioSegments: [],
-          rank: 'VIP',
-        });
-      }
+      return;
     }
-  }, [targetUserId, currentUser, isOpen]);
+
+    // Check in-memory real-time users first
+    const cleanTarget = targetUserId.toLowerCase().trim();
+    const liveMatch = allUsers[cleanTarget];
+    if (liveMatch) {
+      setActiveProfile(liveMatch);
+    } else {
+      // Set initial placeholder while fetching from Firestore
+      setActiveProfile({
+        username: targetUserId,
+        profilePicture: null,
+        banner: null,
+        mood: '',
+        bioSegments: [],
+        rank: 'VIP',
+      });
+    }
+
+    // Fetch latest directly from Firestore
+    getUserFromFirestore(targetUserId)
+      .then((doc) => {
+        if (doc) {
+          setActiveProfile(doc);
+        }
+      })
+      .catch((err) => {
+        console.error('Error loading user profile from Firestore:', err);
+      });
+  }, [targetUserId, currentUser, allUsers, isOpen]);
 
   // Sync edit form fields whenever activeProfile changes
   useEffect(() => {
@@ -122,7 +129,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const isOwner =
     targetUserId === 'current_user' ||
-    targetUserId.toLowerCase() === currentUser.username.toLowerCase();
+    targetUserId.toLowerCase().trim() === currentUser.username.toLowerCase().trim();
   const isSystemBot = targetUserId === 'system';
   const isDevOrFounder = isFounderOrAbove(currentUser);
   const canEdit = isOwner || (isDevOrFounder && !isSystemBot);
@@ -140,17 +147,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const hasBio = Boolean(plainBioText.trim());
 
   // Helper to persist updates to activeProfile (and currentUser if owner)
-  const saveProfileData = (updated: ProfileData, fieldDescription?: string) => {
+  const saveProfileData = async (updated: ProfileData, fieldDescription?: string) => {
     setActiveProfile(updated);
     if (isOwner) {
       onUpdateCurrentUser(updated);
     } else {
       try {
-        const raw = localStorage.getItem('chatcloud_users');
-        const accounts: Record<string, ProfileData> = raw ? JSON.parse(raw) : {};
-        accounts[updated.username.toLowerCase()] = updated;
-        localStorage.setItem('chatcloud_users', JSON.stringify(accounts));
-        saveUserToFirestore(updated).catch(() => {});
+        await saveUserToFirestore(updated);
         if (fieldDescription) {
           addAuditLog(
             currentUser.username,
@@ -159,7 +162,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             'admin'
           );
         }
-      } catch {}
+      } catch (err) {
+        console.error('Error saving updated profile to Firestore:', err);
+      }
     }
   };
 
@@ -324,7 +329,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           ) : (
             <div className="w-full h-full bg-[#1c1e26] flex items-center justify-center">
               <span className="text-neutral-600 text-xs font-mono uppercase tracking-widest select-none">
-                ChatCloud
+                chatlaxy
               </span>
             </div>
           )}
@@ -456,7 +461,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
           {/* User Name & Handle */}
           <div className="flex flex-col mb-3">
-            {/* Rank display: compact icon + WHITE text, NO background, NO badge, NO pill, NO card */}
+            {/* Rank display */}
             {rankConfig && (
               <div className="flex items-center gap-1.5 mb-0.5 select-none">
                 <img

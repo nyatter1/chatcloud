@@ -16,20 +16,21 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
   allUsers = {},
   onOpenProfile,
 }) => {
-  // Determine effective ranks
+  // Determine effective rank for currentUser
   const currentUserRank: RankId =
     currentUser.rank ||
     (currentUser.username.toLowerCase() === 'null' ? 'DEV' : 'VIP');
 
-  // Build online list:
-  // 1. System Bot at the top
-  // 2. Current user
-  // 3. Other registered users from Firestore
+  // Filter out current user from allUsers to avoid duplicate
   const otherUsersList = Object.values(allUsers).filter(
     (u) => u.username.toLowerCase().trim() !== currentUser.username.toLowerCase().trim()
   );
 
-  const onlineUsers = [
+  // Build full roster:
+  // 1. System Bot
+  // 2. Current user
+  // 3. Other registered users
+  const rawOnlineUsers = [
     {
       id: 'system',
       name: SYSTEM_BOT.name,
@@ -39,7 +40,7 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
       rank: SYSTEM_BOT.rank as RankId,
     },
     {
-      id: 'current_user',
+      id: currentUser.username,
       name: currentUser.username,
       avatar: currentUser.profilePicture,
       isSystemBot: false,
@@ -55,6 +56,16 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
       rank: (u.rank || (u.username.toLowerCase() === 'null' ? 'DEV' : 'VIP')) as RankId,
     })),
   ];
+
+  // Sort by staff hierarchy (DEV -> FOUNDER -> ... -> MODERATOR -> BOT -> ELITE -> SUPER-VIP -> VIP)
+  const onlineUsers = [...rawOnlineUsers].sort((a, b) => {
+    const orderA = getRankConfig(a.rank)?.order ?? 99;
+    const orderB = getRankConfig(b.rank)?.order ?? 99;
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+    return a.name.localeCompare(b.name);
+  });
 
   return (
     <aside className="w-56 sm:w-60 md:w-64 bg-[#141518] border-l border-[#24252c] flex flex-col p-4 shrink-0 overflow-y-auto select-none text-left">

@@ -294,6 +294,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
                       onReply={handleReply}
                       onHide={handleHide}
                       onDelete={handleDelete}
+                      onOpenProfile={(target) => setActiveProfileTarget(target)}
                     />
                   );
                 })}
@@ -400,6 +401,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         isOpen={activeProfileTarget !== null}
         targetUserId={activeProfileTarget}
         currentUser={currentUser}
+        allUsers={allUsers}
         onClose={() => setActiveProfileTarget(null)}
         onUpdateCurrentUser={onUpdateCurrentUser}
       />
