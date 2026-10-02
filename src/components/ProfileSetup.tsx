@@ -30,7 +30,7 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({
   const [mood, setMood] = useState(initialProfile?.mood || '');
   const [bioSegments, setBioSegments] = useState<TextSegment[]>(
     initialProfile?.bioSegments || [
-      { id: 'initial-bio', text: 'Chatting on ChatCloud. Connect and chill!' },
+      { id: 'initial-bio', text: 'Chatting on chatlaxy. Connect and chill!' },
     ]
   );
 

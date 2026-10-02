@@ -28,7 +28,7 @@ export function getAuditLogs(): AuditLogEntry[] {
       }),
       actor: 'System',
       action: 'System Initialized',
-      details: 'ChatCloud server and database engine booted successfully.',
+      details: 'chatlaxy server and database engine booted successfully.',
       category: 'admin',
     },
     {

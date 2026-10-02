@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LoginForm } from './components/LoginForm';
 import { SignupForm } from './components/SignupForm';
 import { ProfileSetup } from './components/ProfileSetup';
@@ -25,73 +25,103 @@ const getDefaultRankForUsername = (name: string): RankId => {
   return 'VIP';
 };
 
-// Persistent accounts helper
-const getSavedAccounts = (): Record<string, ProfileData> => {
-  try {
-    const raw = localStorage.getItem('chatcloud_users');
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return {};
-};
-
-const saveAccount = (profile: ProfileData) => {
-  try {
-    const accounts = getSavedAccounts();
-    accounts[profile.username.toLowerCase()] = profile;
-    localStorage.setItem('chatcloud_users', JSON.stringify(accounts));
-  } catch {}
-};
+const SESSION_KEY = 'chatlaxy_current_session';
 
 export default function App() {
   const [screenStep, setScreenStep] = useState<ScreenStep>('auth');
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [username, setUsername] = useState<string>('');
+  const [userPassword, setUserPassword] = useState<string | undefined>(undefined);
+  const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
   const [userAge, setUserAge] = useState<string | undefined>(undefined);
   const [userGender, setUserGender] = useState<string | undefined>(undefined);
   const [currentUserProfile, setCurrentUserProfile] = useState<ProfileData | null>(null);
   const [adminProfileModalTarget, setAdminProfileModalTarget] = useState<string | null>(null);
 
+  // Initialize and verify active session strictly against live Firestore
+  useEffect(() => {
+    // Delete any old legacy offline accounts cache
+    try {
+      localStorage.removeItem('chatcloud_users');
+      localStorage.removeItem('chatcloud_profile');
+    } catch {}
+
+    const restoreSession = async () => {
+      try {
+        const savedSession = localStorage.getItem(SESSION_KEY);
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          if (parsed?.username) {
+            // Verify with Firestore
+            const liveUser = await getUserFromFirestore(parsed.username);
+            if (liveUser) {
+              setCurrentUserProfile(liveUser);
+              setScreenStep('chat');
+            } else {
+              localStorage.removeItem(SESSION_KEY);
+            }
+          }
+        }
+      } catch {
+        localStorage.removeItem(SESSION_KEY);
+      }
+    };
+
+    restoreSession();
+  }, []);
+
   // Transition from signup to profile setup
-  const handleSignupSuccess = (newUsername: string, age?: string, gender?: string) => {
-    setUsername(newUsername);
-    setUserAge(age);
-    setUserGender(gender);
+  const handleSignupSuccess = (data: {
+    username: string;
+    password?: string;
+    email?: string;
+    age?: string;
+    gender?: string;
+  }) => {
+    setUsername(data.username);
+    setUserPassword(data.password);
+    setUserEmail(data.email);
+    setUserAge(data.age);
+    setUserGender(data.gender);
     setScreenStep('profile_setup');
   };
 
-  // Transition from profile setup to ChatCloud chat
+  // Transition from profile setup to chatlaxy chat
   const handleProfileDone = async (profile: ProfileData) => {
-    const accounts = getSavedAccounts();
-    const existing = accounts[profile.username.toLowerCase()];
-
     const completeProfile: ProfileData = {
       ...profile,
+      username: profile.username.trim(),
+      password: userPassword || profile.password,
+      email: userEmail || profile.email,
       age: profile.age || userAge,
       gender: profile.gender || userGender,
-      rank: profile.rank ?? existing?.rank ?? getDefaultRankForUsername(profile.username),
-      chatBackground: profile.chatBackground ?? existing?.chatBackground ?? null,
-      wallet: profile.wallet ?? existing?.wallet ?? {
+      rank: profile.rank ?? getDefaultRankForUsername(profile.username),
+      chatBackground: profile.chatBackground ?? null,
+      wallet: profile.wallet ?? {
         ruby: 5,
         gold: 1000,
       },
     };
 
-    saveAccount(completeProfile);
-    saveUserToFirestore(completeProfile).catch((err) =>
-      console.warn('Firestore user save error:', err)
-    );
+    try {
+      await saveUserToFirestore(completeProfile);
+      localStorage.setItem(SESSION_KEY, JSON.stringify(completeProfile));
+    } catch (err) {
+      console.warn('Firestore user save error:', err);
+    }
+
     setCurrentUserProfile(completeProfile);
     addAuditLog(
       completeProfile.username,
       'User Registered',
-      `${completeProfile.username} completed signup (Age: ${completeProfile.age || 'N/A'}, Gender: ${completeProfile.gender || 'N/A'})`,
+      `${completeProfile.username} registered (Age: ${completeProfile.age || 'N/A'}, Gender: ${completeProfile.gender || 'N/A'})`,
       'user'
     );
     setScreenStep('chat');
   };
 
   // Update profile immediately when modified
-  const handleUpdateCurrentUser = (updated: ProfileData) => {
+  const handleUpdateCurrentUser = async (updated: ProfileData) => {
     const completeProfile: ProfileData = {
       ...updated,
       rank: updated.rank ?? getDefaultRankForUsername(updated.username),
@@ -100,60 +130,34 @@ export default function App() {
         gold: 1000,
       },
     };
-    saveAccount(completeProfile);
-    saveUserToFirestore(completeProfile).catch((err) =>
-      console.warn('Firestore user update error:', err)
-    );
     setCurrentUserProfile(completeProfile);
+    try {
+      await saveUserToFirestore(completeProfile);
+      localStorage.setItem(SESSION_KEY, JSON.stringify(completeProfile));
+    } catch (err) {
+      console.warn('Firestore user update error:', err);
+    }
   };
 
-  // Login with existing account (or create new with starting balance)
-  const handleLoginSuccess = async (loginUsername: string) => {
-    // Check Firestore first for live cloud sync
-    let cloudUser: ProfileData | null = null;
+  // Login with verified Firestore account
+  const handleLoginSuccess = (user: ProfileData) => {
+    setCurrentUserProfile(user);
     try {
-      cloudUser = await getUserFromFirestore(loginUsername);
+      localStorage.setItem(SESSION_KEY, JSON.stringify(user));
     } catch {}
-
-    const accounts = getSavedAccounts();
-    const existing = cloudUser || accounts[loginUsername.toLowerCase()];
-
-    if (existing) {
-      const withDefaults: ProfileData = {
-        ...existing,
-        rank: existing.rank ?? getDefaultRankForUsername(existing.username),
-        wallet: existing.wallet ?? { ruby: 5, gold: 1000 },
-      };
-      saveAccount(withDefaults);
-      saveUserToFirestore(withDefaults).catch(() => {});
-      setCurrentUserProfile(withDefaults);
-      addAuditLog(loginUsername, 'User Logged In', `${loginUsername} logged into account.`, 'user');
-    } else {
-      const newProfile: ProfileData = {
-        username: loginUsername,
-        profilePicture: null,
-        banner: null,
-        mood: '',
-        bioSegments: [],
-        rank: getDefaultRankForUsername(loginUsername),
-        chatBackground: null,
-        wallet: {
-          ruby: 5,
-          gold: 1000,
-        },
-      };
-      saveAccount(newProfile);
-      saveUserToFirestore(newProfile).catch(() => {});
-      setCurrentUserProfile(newProfile);
-      addAuditLog(loginUsername, 'User Registered', `${loginUsername} created and logged into account.`, 'user');
-    }
+    addAuditLog(user.username, 'User Logged In', `${user.username} logged into account.`, 'user');
     setScreenStep('chat');
   };
 
-  // Sign out and return to ChatCloud login screen
+  // Sign out and clear active session
   const handleLogout = () => {
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {}
     setCurrentUserProfile(null);
     setUsername('');
+    setUserPassword(undefined);
+    setUserEmail(undefined);
     setUserAge(undefined);
     setUserGender(undefined);
     setAuthMode('login');
@@ -181,7 +185,7 @@ export default function App() {
     );
   }
 
-  // Screen 3: ChatCloud Chat Screen
+  // Screen 3: chatlaxy Chat Screen
   if (screenStep === 'chat' && currentUserProfile) {
     return (
       <ChatScreen
@@ -201,7 +205,7 @@ export default function App() {
         {/* Minimal top bar with wordmark */}
         <header className="w-full px-6 py-4 flex items-center justify-between border-b border-[#23242a]">
           <span className="text-xl font-semibold tracking-tight text-neutral-100 select-none">
-            ChatCloud
+            chatlaxy
           </span>
           <span className="text-xs text-neutral-500 font-mono">
             Profile Setup
@@ -226,7 +230,7 @@ export default function App() {
         {/* Pure Text Branding Header - NO LOGO */}
         <div className="text-center mb-6">
           <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-100 select-none">
-            ChatCloud
+            chatlaxy
           </h1>
           <p className="text-sm text-neutral-400 font-normal tracking-wide mt-1.5">
             Chat. Connect. Chill.
@@ -278,7 +282,7 @@ export default function App() {
 
         {/* Minimal clean footer text */}
         <div className="mt-8 text-center text-xs text-neutral-600">
-          <span>ChatCloud</span> &middot; <span>Authentication</span>
+          <span>chatlaxy</span> &middot; <span>Authentication</span>
         </div>
 
       </div>

@@ -1,11 +1,18 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 import { SearchableDropdown } from './SearchableDropdown';
 import { GENDER_OPTIONS, AGE_OPTIONS } from '../constants/authOptions';
+import { getUserFromFirestore } from '../services/firestoreService';
 
 interface SignupFormProps {
   onSwitchToLogin: () => void;
-  onSignupSuccess?: (username: string, age?: string, gender?: string) => void;
+  onSignupSuccess: (data: {
+    username: string;
+    password?: string;
+    email?: string;
+    age?: string;
+    gender?: string;
+  }) => void;
 }
 
 export const SignupForm: React.FC<SignupFormProps> = ({
@@ -26,11 +33,12 @@ export const SignupForm: React.FC<SignupFormProps> = ({
     gender?: string;
     age?: string;
   }>({});
-  const [validatedFeedback, setValidatedFeedback] = useState<string | null>(null);
+  const [generalError, setGeneralError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setValidatedFeedback(null);
+    setGeneralError(null);
 
     const newErrors: {
       username?: string;
@@ -52,8 +60,8 @@ export const SignupForm: React.FC<SignupFormProps> = ({
     // Password validation
     if (!password) {
       newErrors.password = 'Password is required';
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
+    } else if (password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
     }
 
     // Email validation
@@ -80,22 +88,48 @@ export const SignupForm: React.FC<SignupFormProps> = ({
     }
 
     setErrors({});
-    if (onSignupSuccess) {
-      onSignupSuccess(username.trim(), age, gender);
-    } else {
-      setValidatedFeedback(
-        'Account details verified client-side. Client-side authentication only — backend will be connected in a future update.'
-      );
+    setIsLoading(true);
+
+    try {
+      // Verify username uniqueness in live Firestore
+      const cleanUsername = username.trim();
+      const existingUser = await getUserFromFirestore(cleanUsername);
+
+      if (existingUser) {
+        setGeneralError('This username is already taken. Please choose another or log in.');
+        setIsLoading(false);
+        return;
+      }
+
+      onSignupSuccess({
+        username: cleanUsername,
+        password,
+        email: email.trim(),
+        age,
+        gender,
+      });
+    } catch (err: any) {
+      console.error('Firestore check error during signup:', err);
+      // If offline/error, proceed or show notification
+      onSignupSuccess({
+        username: username.trim(),
+        password,
+        email: email.trim(),
+        age,
+        gender,
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3.5 w-full" noValidate>
-      {/* Client-side submission validation feedback */}
-      {validatedFeedback && (
-        <div className="flex items-start gap-2.5 p-3 rounded-md bg-[#18211b] border border-emerald-900/60 text-emerald-300 text-xs leading-relaxed animate-in fade-in duration-200">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
-          <span>{validatedFeedback}</span>
+      {/* General error notice */}
+      {generalError && (
+        <div className="flex items-start gap-2.5 p-3 rounded-md bg-[#25181a] border border-red-900/60 text-red-300 text-xs leading-relaxed animate-in fade-in duration-200 text-left">
+          <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+          <span>{generalError}</span>
         </div>
       )}
 
@@ -110,10 +144,12 @@ export const SignupForm: React.FC<SignupFormProps> = ({
           value={username}
           onChange={(e) => {
             setUsername(e.target.value);
+            setGeneralError(null);
             if (errors.username) setErrors((prev) => ({ ...prev, username: undefined }));
           }}
           placeholder="Choose a username"
           autoComplete="username"
+          disabled={isLoading}
           className={`w-full px-3.5 py-2.5 text-sm bg-[#16171a] border rounded-md text-neutral-100 placeholder-neutral-500 outline-none transition-colors ${
             errors.username
               ? 'border-red-500/80 focus:border-red-400'
@@ -138,10 +174,12 @@ export const SignupForm: React.FC<SignupFormProps> = ({
           value={email}
           onChange={(e) => {
             setEmail(e.target.value);
+            setGeneralError(null);
             if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
           }}
           placeholder="name@example.com"
           autoComplete="email"
+          disabled={isLoading}
           className={`w-full px-3.5 py-2.5 text-sm bg-[#16171a] border rounded-md text-neutral-100 placeholder-neutral-500 outline-none transition-colors ${
             errors.email
               ? 'border-red-500/80 focus:border-red-400'
@@ -167,10 +205,12 @@ export const SignupForm: React.FC<SignupFormProps> = ({
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
+              setGeneralError(null);
               if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
             }}
-            placeholder="At least 8 characters"
+            placeholder="At least 6 characters"
             autoComplete="new-password"
+            disabled={isLoading}
             className={`w-full pl-3.5 pr-10 py-2.5 text-sm bg-[#16171a] border rounded-md text-neutral-100 placeholder-neutral-500 outline-none transition-colors ${
               errors.password
                 ? 'border-red-500/80 focus:border-red-400'
@@ -180,7 +220,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
           <button
             type="button"
             onClick={() => setShowPassword((prev) => !prev)}
-            className="absolute right-3 text-neutral-400 hover:text-neutral-200 transition-colors p-1"
+            className="absolute right-3 text-neutral-400 hover:text-neutral-200 transition-colors p-1 cursor-pointer"
             aria-label={showPassword ? 'Hide password' : 'Show password'}
           >
             {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -229,9 +269,17 @@ export const SignupForm: React.FC<SignupFormProps> = ({
       {/* Submit Button */}
       <button
         type="submit"
-        className="w-full mt-2 py-2.5 px-4 bg-zinc-200 hover:bg-white text-zinc-950 font-medium text-sm rounded-md transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:ring-offset-2 focus:ring-offset-[#1a1b20]"
+        disabled={isLoading}
+        className="w-full mt-2 py-2.5 px-4 bg-zinc-200 hover:bg-white disabled:opacity-50 text-zinc-950 font-medium text-sm rounded-md transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:ring-offset-2 focus:ring-offset-[#1a1b20] cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
-        Create Account
+        {isLoading ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin text-zinc-950" />
+            <span>Checking...</span>
+          </>
+        ) : (
+          <span>Create Account</span>
+        )}
       </button>
 
       {/* Switch to Login */}
@@ -240,7 +288,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
         <button
           type="button"
           onClick={onSwitchToLogin}
-          className="text-neutral-200 hover:text-white font-medium underline underline-offset-4 decoration-neutral-600 hover:decoration-neutral-300 transition-colors ml-1"
+          className="text-neutral-200 hover:text-white font-medium underline underline-offset-4 decoration-neutral-600 hover:decoration-neutral-300 transition-colors ml-1 cursor-pointer"
         >
           Login
         </button>

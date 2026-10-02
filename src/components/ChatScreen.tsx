@@ -213,7 +213,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       <header className="h-14 sm:h-16 px-4 sm:px-6 bg-[#16171b] border-b border-[#25262d] flex items-center justify-between shrink-0 z-20 relative">
         {/* Brand Wordmark Only */}
         <span className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-100">
-          ChatCloud
+          chatlaxy
         </span>
 
         {/* Top Right: ONLY the user's profile picture */}

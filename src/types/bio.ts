@@ -51,6 +51,8 @@ export interface TextSegment extends BioFormatting {
 
 export interface ProfileData {
   username: string;
+  password?: string;
+  email?: string;
   profilePicture: string | null;
   banner: string | null;
   mood: string;
