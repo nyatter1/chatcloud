@@ -70,8 +70,8 @@ export default function App() {
     restoreSession();
   }, []);
 
-  // Transition from signup to profile setup
-  const handleSignupSuccess = (data: {
+  // Transition from signup to profile setup: Immediately saves new user to Firestore
+  const handleSignupSuccess = async (data: {
     username: string;
     password?: string;
     email?: string;
@@ -83,6 +83,41 @@ export default function App() {
     setUserEmail(data.email);
     setUserAge(data.age);
     setUserGender(data.gender);
+
+    const initialProfile: ProfileData = {
+      username: data.username.trim(),
+      password: data.password,
+      email: data.email,
+      age: data.age,
+      gender: data.gender,
+      profilePicture: null,
+      banner: null,
+      mood: '',
+      bioSegments: [
+        { id: 'initial-bio', text: 'Chatting on chatlaxy. Connect and chill!' },
+      ],
+      rank: getDefaultRankForUsername(data.username),
+      chatBackground: null,
+      wallet: {
+        ruby: 5,
+        gold: 1000,
+      },
+      effects: {
+        starEffect: true,
+        borderEffect: 'subtle-glow',
+        pfpBorder: 'square-neon',
+      },
+    };
+
+    // Save to Firestore right away upon account creation
+    try {
+      await saveUserToFirestore(initialProfile);
+      localStorage.setItem(SESSION_KEY, JSON.stringify(initialProfile));
+    } catch (err) {
+      console.error('Failed to save new user to Firestore immediately:', err);
+    }
+
+    setCurrentUserProfile(initialProfile);
     setScreenStep('profile_setup');
   };
 
@@ -91,13 +126,13 @@ export default function App() {
     const completeProfile: ProfileData = {
       ...profile,
       username: profile.username.trim(),
-      password: userPassword || profile.password,
-      email: userEmail || profile.email,
-      age: profile.age || userAge,
-      gender: profile.gender || userGender,
-      rank: profile.rank ?? getDefaultRankForUsername(profile.username),
-      chatBackground: profile.chatBackground ?? null,
-      wallet: profile.wallet ?? {
+      password: userPassword || currentUserProfile?.password || profile.password,
+      email: userEmail || currentUserProfile?.email || profile.email,
+      age: profile.age || userAge || currentUserProfile?.age,
+      gender: profile.gender || userGender || currentUserProfile?.gender,
+      rank: profile.rank ?? currentUserProfile?.rank ?? getDefaultRankForUsername(profile.username),
+      chatBackground: profile.chatBackground ?? currentUserProfile?.chatBackground ?? null,
+      wallet: profile.wallet ?? currentUserProfile?.wallet ?? {
         ruby: 5,
         gold: 1000,
       },
@@ -114,13 +149,13 @@ export default function App() {
     addAuditLog(
       completeProfile.username,
       'User Registered',
-      `${completeProfile.username} registered (Age: ${completeProfile.age || 'N/A'}, Gender: ${completeProfile.gender || 'N/A'})`,
+      `${completeProfile.username} joined chatlaxy (Age: ${completeProfile.age || 'N/A'}, Gender: ${completeProfile.gender || 'N/A'})`,
       'user'
     );
     setScreenStep('chat');
   };
 
-  // Update profile immediately when modified
+  // Update profile immediately when modified (e.g. from bio editor, store purchases, etc.)
   const handleUpdateCurrentUser = async (updated: ProfileData) => {
     const completeProfile: ProfileData = {
       ...updated,
@@ -213,7 +248,7 @@ export default function App() {
         </header>
 
         <ProfileSetup
-          initialUsername={username || 'Member'}
+          initialUsername={username || currentUserProfile?.username || 'Member'}
           initialProfile={currentUserProfile}
           onDone={handleProfileDone}
         />

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload } from 'lucide-react';
+import { X, Upload, Loader2 } from 'lucide-react';
+import { uploadImageToCloudinary } from '../utils/cloudinary';
 
 interface ChatBackgroundModalProps {
   isOpen: boolean;
@@ -19,28 +20,42 @@ export const ChatBackgroundModal: React.FC<ChatBackgroundModalProps> = ({
   onResetBackground,
 }) => {
   const [selectedBackground, setSelectedBackground] = useState<string | null>(currentBackground);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync state whenever modal opens
   useEffect(() => {
     if (isOpen) {
       setSelectedBackground(currentBackground);
+      setUploadError(null);
     }
   }, [isOpen, currentBackground]);
 
   if (!isOpen) return null;
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const result = event.target?.result as string;
-        setSelectedBackground(result);
-        // Preview immediately behind the chat
-        onPreviewBackground(result);
-      };
-      reader.readAsDataURL(file);
+      setIsUploading(true);
+      setUploadError(null);
+      try {
+        const cloudUrl = await uploadImageToCloudinary(file);
+        setSelectedBackground(cloudUrl);
+        onPreviewBackground(cloudUrl);
+      } catch (err: any) {
+        console.error('Cloudinary upload error:', err);
+        // Fallback to local base64 if network fails
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const result = event.target?.result as string;
+          setSelectedBackground(result);
+          onPreviewBackground(result);
+        };
+        reader.readAsDataURL(file);
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
@@ -85,15 +100,31 @@ export const ChatBackgroundModal: React.FC<ChatBackgroundModalProps> = ({
           </button>
         </div>
 
+        {uploadError && (
+          <div className="p-2.5 rounded bg-red-950/40 border border-red-800/60 text-red-300 text-xs">
+            {uploadError}
+          </div>
+        )}
+
         {/* Upload Button */}
         <div className="flex flex-col gap-2">
           <button
             type="button"
+            disabled={isUploading}
             onClick={() => fileInputRef.current?.click()}
-            className="w-full py-2.5 px-4 bg-[#20222a] hover:bg-[#282a35] border border-[#323442] hover:border-zinc-500 text-neutral-200 hover:text-white rounded-xs text-xs font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-2.5 px-4 bg-[#20222a] hover:bg-[#282a35] disabled:opacity-50 border border-[#323442] hover:border-zinc-500 text-neutral-200 hover:text-white rounded-xs text-xs font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Upload className="w-3.5 h-3.5 text-neutral-400" />
-            <span>Upload chat background</span>
+            {isUploading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-300" />
+                <span>Uploading to Cloudinary...</span>
+              </>
+            ) : (
+              <>
+                <Upload className="w-3.5 h-3.5 text-neutral-400" />
+                <span>Upload chat background</span>
+              </>
+            )}
           </button>
 
           <input
@@ -114,13 +145,15 @@ export const ChatBackgroundModal: React.FC<ChatBackgroundModalProps> = ({
         <div className="flex items-center gap-2 pt-1">
           <button
             type="button"
+            disabled={isUploading}
             onClick={handleSave}
-            className="flex-1 py-2 bg-zinc-200 hover:bg-white text-zinc-950 font-bold text-xs rounded-xs transition-colors cursor-pointer text-center"
+            className="flex-1 py-2 bg-zinc-200 hover:bg-white disabled:opacity-50 text-zinc-950 font-bold text-xs rounded-xs transition-colors cursor-pointer text-center"
           >
             Save
           </button>
           <button
             type="button"
+            disabled={isUploading}
             onClick={handleCancel}
             className="flex-1 py-2 bg-[#20222a] hover:bg-[#292b36] border border-[#2f313e] text-neutral-300 font-semibold text-xs rounded-xs transition-colors cursor-pointer text-center"
           >
@@ -133,6 +166,7 @@ export const ChatBackgroundModal: React.FC<ChatBackgroundModalProps> = ({
           <div className="pt-2 border-t border-[#262832]">
             <button
               type="button"
+              disabled={isUploading}
               onClick={handleReset}
               className="w-full py-2 bg-[#261a1f] hover:bg-[#341d24] border border-red-900/40 text-red-400 hover:text-red-300 font-semibold text-xs rounded-xs transition-colors cursor-pointer text-center"
             >
