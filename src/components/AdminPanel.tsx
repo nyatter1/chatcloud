@@ -32,7 +32,7 @@ import {
   clearAuditLogsInFirestore,
   getAllUsersFromFirestore,
   sendNotificationToFirestore,
-} from '../services/firestoreService';
+} from '../services/apiService';
 import { AppNotification } from '../types/notifications';
 
 interface AdminPanelProps {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Gift, Sparkles, Newspaper } from 'lucide-react';
+import { X, Gift, Sparkles, Newspaper, Palette } from 'lucide-react';
 import { ChatlaxyLogo } from './ChatlaxyLogo';
 
 interface HamburgerMenuDrawerProps {
@@ -8,6 +8,7 @@ interface HamburgerMenuDrawerProps {
   onClose: () => void;
   onOpenDailyRewards: () => void;
   onOpenAvatarFrames: () => void;
+  onOpenProfileDecorations?: () => void;
   onOpenNews: () => void;
 }
 
@@ -17,6 +18,7 @@ export const HamburgerMenuDrawer: React.FC<HamburgerMenuDrawerProps> = ({
   onClose,
   onOpenDailyRewards,
   onOpenAvatarFrames,
+  onOpenProfileDecorations,
   onOpenNews,
 }) => {
   if (!isOpen) return null;
@@ -99,6 +101,21 @@ export const HamburgerMenuDrawer: React.FC<HamburgerMenuDrawerProps> = ({
             <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
             <span>Avatar Frames</span>
           </button>
+
+          {/* Profile Decorations */}
+          {onOpenProfileDecorations && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenProfileDecorations();
+              }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-semibold text-neutral-200 hover:text-white hover:bg-[#1f2029] rounded-xs border border-transparent hover:border-white/5 transition-all cursor-pointer text-left"
+            >
+              <Palette className="w-4 h-4 text-pink-400 shrink-0" />
+              <span>Profile Decoration</span>
+            </button>
+          )}
         </div>
 
         {/* Drawer Footer */}

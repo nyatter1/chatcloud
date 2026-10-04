@@ -14,7 +14,7 @@ import { ChatlaxyLogo } from './components/ChatlaxyLogo';
 import { ProfileData } from './types/bio';
 import { RankId } from './types/ranks';
 import { addAuditLog } from './utils/auditLogger';
-import { saveUserToFirestore, getUserFromFirestore } from './services/firestoreService';
+import { saveUserToFirestore, getUserFromFirestore } from './services/apiService';
 
 type ScreenStep = 'auth' | 'profile_setup' | 'chat' | 'admin';
 type AuthMode = 'login' | 'signup';

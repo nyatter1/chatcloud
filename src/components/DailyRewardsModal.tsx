@@ -3,7 +3,7 @@ import { X, Gift, Trophy, Check, Sparkles } from 'lucide-react';
 import { ProfileData } from '../types/bio';
 import { GoldIcon, RubyIcon } from './CurrencyIcons';
 import { UserAvatar } from './UserAvatar';
-import { getAllUsersFromFirestore } from '../services/firestoreService';
+import { getAllUsersFromFirestore } from '../services/apiService';
 
 interface DailyRewardsModalProps {
   isOpen: boolean;

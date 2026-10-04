@@ -1,7 +1,7 @@
 import { ProfileData } from '../types/bio';
 import { ChatMessage, GambleResultPayload } from '../types/chat';
 import { SYSTEM_BOT } from '../constants/systemBot';
-import { saveUserToFirestore, setRiggedUserInFirestore, getUserFromFirestore } from '../services/firestoreService';
+import { saveUserToFirestore, setRiggedUserInFirestore, getUserFromFirestore } from '../services/apiService';
 
 export interface CommandExecutionResult {
   isCommand: boolean;

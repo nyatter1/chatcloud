@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 import { SearchableDropdown } from './SearchableDropdown';
 import { GENDER_OPTIONS, AGE_OPTIONS } from '../constants/authOptions';
-import { getUserFromFirestore } from '../services/firestoreService';
+import { getUserFromFirestore } from '../services/apiService';
 
 interface SignupFormProps {
   onSwitchToLogin: () => void;

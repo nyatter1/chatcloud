@@ -20,12 +20,13 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
 }) => {
   // Determine effective rank for currentUser
   const currentUserRank: RankId =
-    currentUser.rank ||
-    (currentUser.username.toLowerCase() === 'null' ? 'DEV' : 'VIP');
+    currentUser?.rank ||
+    (currentUser?.username?.toLowerCase() === 'null' ? 'DEV' : 'VIP');
 
   // Filter out current user from allUsers to avoid duplicate
-  const otherUsersList = Object.values(allUsers).filter(
-    (u) => u.username.toLowerCase().trim() !== currentUser.username.toLowerCase().trim()
+  const myUsername = (currentUser?.username || '').toLowerCase().trim();
+  const otherUsersList = Object.values(allUsers || {}).filter(
+    (u) => u && u.username && u.username.toLowerCase().trim() !== myUsername
   );
 
   // Build full roster:
@@ -44,21 +45,35 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
       customRankName: null,
       usernameStyle: null,
     },
-    {
-      id: currentUser.username,
-      name: currentUser.username,
-      avatar: currentUser.profilePicture || allUsers[currentUser.username.toLowerCase().trim()]?.profilePicture || null,
-      avatarFrame: currentUser.avatarFrame || currentUser.effects?.pfpBorder || allUsers[currentUser.username.toLowerCase().trim()]?.avatarFrame || null,
-      isSystemBot: false,
-      mood: currentUser.mood?.trim() || '',
-      rank: currentUserRank,
-      customRankName: currentUser.customRankName || null,
-      usernameStyle: currentUser.usernameStyle || allUsers[currentUser.username.toLowerCase().trim()]?.usernameStyle || null,
-    },
+    ...(currentUser?.username
+      ? [
+          {
+            id: currentUser.username,
+            name: currentUser.username,
+            avatar:
+              currentUser.profilePicture ||
+              allUsers[myUsername]?.profilePicture ||
+              null,
+            avatarFrame:
+              currentUser.avatarFrame ||
+              currentUser.effects?.pfpBorder ||
+              allUsers[myUsername]?.avatarFrame ||
+              null,
+            isSystemBot: false,
+            mood: currentUser.mood?.trim() || '',
+            rank: currentUserRank,
+            customRankName: currentUser.customRankName || null,
+            usernameStyle:
+              currentUser.usernameStyle ||
+              allUsers[myUsername]?.usernameStyle ||
+              null,
+          },
+        ]
+      : []),
     ...otherUsersList.map((u) => ({
       id: u.username,
       name: u.username,
-      avatar: u.profilePicture,
+      avatar: u.profilePicture || null,
       avatarFrame: u.avatarFrame || u.effects?.pfpBorder || null,
       isSystemBot: false,
       mood: u.mood?.trim() || '',

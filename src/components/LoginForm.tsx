@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
-import { getUserFromFirestore } from '../services/firestoreService';
+import { getUserFromFirestore } from '../services/apiService';
 import { ProfileData } from '../types/bio';
 
 interface LoginFormProps {

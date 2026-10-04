@@ -1,4 +1,4 @@
-import { addAuditLogToFirestore, clearAuditLogsInFirestore } from '../services/firestoreService';
+import { addAuditLogToFirestore, clearAuditLogsInFirestore } from '../services/apiService';
 
 export interface AuditLogEntry {
   id: string;

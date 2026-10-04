@@ -28,16 +28,18 @@ import {
   saveUserToFirestore,
   getUserFromFirestore,
   sendNotificationToFirestore,
-} from '../services/firestoreService';
+} from '../services/apiService';
 import { AppNotification } from '../types/notifications';
 import { ProfileEffectCanvas } from './ProfileEffectCanvas';
 import { ProfileEffectsModal } from './ProfileEffectsModal';
 import { ProfileBordersModal } from './ProfileBordersModal';
+import { ProfileDecorationsModal } from './ProfileDecorationsModal';
 import { CustomRankNameModal } from './CustomRankNameModal';
 import { StyleCustomizerModal } from './StyleCustomizerModal';
 import { TextStyleConfig } from '../types/bio';
 import { UserAvatar } from './UserAvatar';
 import { getBorderConfig } from '../types/profileBorders';
+import { getDecorationConfig } from '../types/profileDecorations';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -83,9 +85,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
   const [isProfileEffectsOpen, setIsProfileEffectsOpen] = useState(false);
   const [isProfileBordersOpen, setIsProfileBordersOpen] = useState(false);
+  const [isProfileDecorationsOpen, setIsProfileDecorationsOpen] = useState(false);
   const [isCustomRankNameOpen, setIsCustomRankNameOpen] = useState(false);
   const [isUsernameColorOpen, setIsUsernameColorOpen] = useState(false);
   const [isTextColorOpen, setIsTextColorOpen] = useState(false);
+
+  // Decoration full-profile overlay state (plays once on profile open, then fades out until re-opened)
+  const [showDecorationOverlay, setShowDecorationOverlay] = useState(false);
+  const [isDecorationFading, setIsDecorationFading] = useState(false);
+  const [decorationKey, setDecorationKey] = useState(0);
 
   const pfpInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -228,6 +236,42 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       });
     }
   }, [isOpen, targetUserId, activeProfile.username, currentUser]);
+
+  // Handle profile decoration overlay animation (plays once on profile open, then fades out until re-opened)
+  useEffect(() => {
+    if (!isOpen || !activeProfile.profileDecoration || activeProfile.profileDecoration === 'none') {
+      setShowDecorationOverlay(false);
+      setIsDecorationFading(false);
+      return;
+    }
+
+    const decoConfig = getDecorationConfig(activeProfile.profileDecoration);
+    if (!decoConfig.assetUrl) {
+      setShowDecorationOverlay(false);
+      return;
+    }
+
+    setShowDecorationOverlay(true);
+    setIsDecorationFading(false);
+    setDecorationKey(Date.now());
+
+    const duration = decoConfig.durationMs || 4000;
+    const fadeOutDelay = Math.max(500, duration - 800);
+
+    const fadeTimer = setTimeout(() => {
+      setIsDecorationFading(true);
+    }, fadeOutDelay);
+
+    const hideTimer = setTimeout(() => {
+      setShowDecorationOverlay(false);
+      setIsDecorationFading(false);
+    }, duration);
+
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(hideTimer);
+    };
+  }, [isOpen, targetUserId, activeProfile.profileDecoration]);
 
   if (!isOpen || !targetUserId) return null;
 
@@ -514,6 +558,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     saveProfileData(updated, `profile border to "${borderId || 'none'}"`);
   };
 
+  // Save Profile Decoration
+  const handleSaveProfileDecoration = (decorationId: string | null) => {
+    const updated = {
+      ...activeProfile,
+      profileDecoration: decorationId,
+    };
+    saveProfileData(updated, `profile decoration to "${decorationId || 'none'}"`);
+  };
+
   // Save Custom Rank Name
   const handleSaveCustomRankName = (customName: string | null) => {
     const updated = {
@@ -542,6 +595,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   };
 
   const activeBorderConfig = getBorderConfig(activeProfile.profileBorder);
+  const activeProfileDecorationConfig = getDecorationConfig(activeProfile.profileDecoration);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
@@ -587,6 +641,22 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         className={`relative z-10 w-full max-w-sm sm:max-w-md bg-[#141519] rounded-xs shadow-2xl overflow-hidden flex flex-col text-left select-none animate-in zoom-in-95 duration-150 transition-all ${activeBorderConfig.cardClasses}`}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Profile Decoration: Collectible Animated Overlay across the entire profile */}
+        {showDecorationOverlay && activeProfileDecorationConfig.assetUrl && (
+          <div
+            key={decorationKey}
+            className={`absolute inset-0 z-40 pointer-events-none overflow-hidden flex items-center justify-center transition-opacity duration-700 ${
+              isDecorationFading ? 'opacity-0' : 'opacity-100'
+            }`}
+          >
+            <img
+              src={activeProfileDecorationConfig.assetUrl}
+              alt={activeProfileDecorationConfig.name}
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover sm:object-fill pointer-events-none select-none"
+            />
+          </div>
+        )}
         {/* ================================================== */}
         {/* BANNER SECTION                                     */}
         {/* ================================================== */}
@@ -1024,6 +1094,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                   <button
                     type="button"
+                    onClick={() => setIsProfileDecorationsOpen(true)}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span>Profile Decoration</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setIsCustomRankNameOpen(true)}
                     className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
                   >
@@ -1326,6 +1405,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             currentUser={activeProfile}
             onClose={() => setIsProfileBordersOpen(false)}
             onSaveBorder={handleSaveProfileBorder}
+          />
+        )}
+
+        {/* Profile Decorations Modal */}
+        {isProfileDecorationsOpen && (
+          <ProfileDecorationsModal
+            isOpen={isProfileDecorationsOpen}
+            currentUser={activeProfile}
+            onClose={() => setIsProfileDecorationsOpen(false)}
+            onSaveDecoration={handleSaveProfileDecoration}
           />
         )}
 

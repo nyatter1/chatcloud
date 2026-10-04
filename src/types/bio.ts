@@ -74,6 +74,7 @@ export interface ProfileData {
   profileMusic?: string | null;
   profileEffect?: string | null;
   profileBorder?: string | null;
+  profileDecoration?: string | null;
   customRankName?: string | null;
   avatarFrame?: string | null;
   usernameStyle?: TextStyleConfig | null;

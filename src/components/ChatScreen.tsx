@@ -10,6 +10,7 @@ import { ChatBackgroundModal } from './ChatBackgroundModal';
 import { HamburgerMenuDrawer } from './HamburgerMenuDrawer';
 import { DailyRewardsModal } from './DailyRewardsModal';
 import { AvatarFrameStudioModal } from './AvatarFrameStudioModal';
+import { ProfileDecorationsModal } from './ProfileDecorationsModal';
 import { UserAvatar } from './UserAvatar';
 import { NewsPanel } from './NewsPanel';
 import { NewsComposer } from './NewsComposer';
@@ -34,7 +35,7 @@ import {
   subscribeToUserNotifications,
   deleteNotificationFromFirestore,
   clearAllNotificationsForUser,
-} from '../services/firestoreService';
+} from '../services/apiService';
 
 interface ChatScreenProps {
   currentUser: ProfileData;
@@ -59,6 +60,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
   const [isDailyRewardsOpen, setIsDailyRewardsOpen] = useState(false);
   const [isAvatarFramesOpen, setIsAvatarFramesOpen] = useState(false);
+  const [isProfileDecorationsOpen, setIsProfileDecorationsOpen] = useState(false);
   const [isNewsOpen, setIsNewsOpen] = useState(false);
   const [hasUnreadNews, setHasUnreadNews] = useState(false);
   const [newsPosts, setNewsPosts] = useState<NewsPost[]>([]);
@@ -91,16 +93,9 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   useEffect(() => {
     const unsubscribe = subscribeToUsers((usersMap) => {
       setAllUsers(usersMap);
-      if (currentUser.username) {
-        const myKey = currentUser.username.toLowerCase().trim();
-        const myUpdated = usersMap[myKey];
-        if (myUpdated) {
-          onUpdateCurrentUser(myUpdated);
-        }
-      }
     });
     return () => unsubscribe();
-  }, [currentUser.username, onUpdateCurrentUser]);
+  }, []);
 
   // 3. Subscribe to Live Firestore News Announcements
   useEffect(() => {
@@ -541,6 +536,20 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     setMessages((prev) => prev.filter((m) => m.id !== id));
   };
 
+  // Handle selecting profile decoration
+  const handleSelectProfileDecoration = async (decorationId: string | null) => {
+    const updated: ProfileData = {
+      ...currentUser,
+      profileDecoration: decorationId,
+    };
+    onUpdateCurrentUser(updated);
+    try {
+      await saveUserToFirestore(updated);
+    } catch (err) {
+      console.warn('Failed to save profile decoration to Firestore:', err);
+    }
+  };
+
   // Visible messages (filtered by hidden IDs)
   const visibleMessages = messages.filter((m) => !hiddenMessageIds.has(m.id));
 
@@ -835,6 +844,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         onClose={() => setIsHamburgerOpen(false)}
         onOpenDailyRewards={() => setIsDailyRewardsOpen(true)}
         onOpenAvatarFrames={() => setIsAvatarFramesOpen(true)}
+        onOpenProfileDecorations={() => setIsProfileDecorationsOpen(true)}
         onOpenNews={handleOpenNews}
       />
 
@@ -871,14 +881,12 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         onSelectFrame={handleSelectAvatarFrame}
       />
 
-      {/* User Profile Modal (Live Viewing & Editing) */}
-      <ProfileModal
-        isOpen={activeProfileTarget !== null}
-        targetUserId={activeProfileTarget}
+      {/* Profile Decorations Modal */}
+      <ProfileDecorationsModal
+        isOpen={isProfileDecorationsOpen}
         currentUser={currentUser}
-        allUsers={allUsers}
-        onClose={() => setActiveProfileTarget(null)}
-        onUpdateCurrentUser={onUpdateCurrentUser}
+        onClose={() => setIsProfileDecorationsOpen(false)}
+        onSaveDecoration={handleSelectProfileDecoration}
       />
     </div>
   );
