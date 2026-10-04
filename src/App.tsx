@@ -14,7 +14,7 @@ import { ChatlaxyLogo } from './components/ChatlaxyLogo';
 import { ProfileData } from './types/bio';
 import { RankId } from './types/ranks';
 import { addAuditLog } from './utils/auditLogger';
-import { saveUserToFirestore, getUserFromFirestore } from './services/apiService';
+import { signup, login, logout, getCurrentUser, saveUserToFirestore } from './services/apiService';
 
 type ScreenStep = 'auth' | 'profile_setup' | 'chat' | 'admin';
 type AuthMode = 'login' | 'signup';
@@ -38,33 +38,21 @@ export default function App() {
   const [userGender, setUserGender] = useState<string | undefined>(undefined);
   const [currentUserProfile, setCurrentUserProfile] = useState<ProfileData | null>(null);
   const [adminProfileModalTarget, setAdminProfileModalTarget] = useState<string | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
-  // Initialize and verify active session strictly against live Firestore
+  // Initialize and verify active session strictly against live secure HTTP-Only backend cookies
   useEffect(() => {
-    // Delete any old legacy offline accounts cache
-    try {
-      localStorage.removeItem('chatcloud_users');
-      localStorage.removeItem('chatcloud_profile');
-    } catch {}
-
     const restoreSession = async () => {
       try {
-        const savedSession = localStorage.getItem(SESSION_KEY);
-        if (savedSession) {
-          const parsed = JSON.parse(savedSession);
-          if (parsed?.username) {
-            // Verify with Firestore
-            const liveUser = await getUserFromFirestore(parsed.username);
-            if (liveUser) {
-              setCurrentUserProfile(liveUser);
-              setScreenStep('chat');
-            } else {
-              localStorage.removeItem(SESSION_KEY);
-            }
-          }
+        const res = await getCurrentUser();
+        if (res && res.authenticated && res.user) {
+          setCurrentUserProfile(res.user);
+          setScreenStep('chat');
         }
-      } catch {
-        localStorage.removeItem(SESSION_KEY);
+      } catch (err) {
+        console.warn('Session verification failed:', err);
+      } finally {
+        setIsAuthChecking(false);
       }
     };
 
@@ -79,47 +67,44 @@ export default function App() {
     age?: string;
     gender?: string;
   }) => {
+    if (!data.password) return;
+
     setUsername(data.username);
     setUserPassword(data.password);
     setUserEmail(data.email);
     setUserAge(data.age);
     setUserGender(data.gender);
 
-    const initialProfile: ProfileData = {
-      username: data.username.trim(),
-      password: data.password,
-      email: data.email,
-      age: data.age,
-      gender: data.gender,
-      profilePicture: null,
-      banner: null,
-      mood: '',
-      bioSegments: [
-        { id: 'initial-bio', text: 'Chatting on chatlaxy. Connect and chill!' },
-      ],
-      rank: getDefaultRankForUsername(data.username),
-      chatBackground: null,
-      wallet: {
-        ruby: 5,
-        gold: 1000,
-      },
-      effects: {
-        starEffect: true,
-        borderEffect: 'subtle-glow',
-        pfpBorder: 'square-neon',
-      },
-    };
-
-    // Save to Firestore right away upon account creation
+    setIsAuthChecking(true);
     try {
-      await saveUserToFirestore(initialProfile);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(initialProfile));
-    } catch (err) {
-      console.error('Failed to save new user to Firestore immediately:', err);
-    }
+      const initialProfile = {
+        email: data.email,
+        age: data.age,
+        gender: data.gender,
+        bioSegments: [
+          { id: 'initial-bio', text: 'Chatting on chatlaxy. Connect and chill!' },
+        ],
+        rank: getDefaultRankForUsername(data.username),
+        effects: {
+          starEffect: true,
+          borderEffect: 'subtle-glow',
+          pfpBorder: 'square-neon',
+        },
+      };
 
-    setCurrentUserProfile(initialProfile);
-    setScreenStep('profile_setup');
+      const user = await signup(data.username, data.password, initialProfile);
+      if (user) {
+        setCurrentUserProfile(user);
+        setScreenStep('profile_setup');
+      } else {
+        alert('Signup failed. Username might already be taken.');
+      }
+    } catch (err) {
+      console.error('Failed to register user:', err);
+      alert('Signup failed. Please try again.');
+    } finally {
+      setIsAuthChecking(false);
+    }
   };
 
   // Transition from profile setup to chatlaxy chat
@@ -127,7 +112,6 @@ export default function App() {
     const completeProfile: ProfileData = {
       ...profile,
       username: profile.username.trim(),
-      password: userPassword || currentUserProfile?.password || profile.password,
       email: userEmail || currentUserProfile?.email || profile.email,
       age: profile.age || userAge || currentUserProfile?.age,
       gender: profile.gender || userGender || currentUserProfile?.gender,
@@ -141,9 +125,8 @@ export default function App() {
 
     try {
       await saveUserToFirestore(completeProfile);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(completeProfile));
     } catch (err) {
-      console.warn('Firestore user save error:', err);
+      console.warn('User profile update error:', err);
     }
 
     setCurrentUserProfile(completeProfile);
@@ -169,36 +152,46 @@ export default function App() {
     setCurrentUserProfile(completeProfile);
     try {
       await saveUserToFirestore(completeProfile);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(completeProfile));
     } catch (err) {
-      console.warn('Firestore user update error:', err);
+      console.warn('User update error:', err);
     }
   };
 
-  // Login with verified Firestore account
+  // Login with verified backend account
   const handleLoginSuccess = (user: ProfileData) => {
     setCurrentUserProfile(user);
-    try {
-      localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-    } catch {}
     addAuditLog(user.username, 'User Logged In', `${user.username} logged into account.`, 'user');
     setScreenStep('chat');
   };
 
   // Sign out and clear active session
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    setIsAuthChecking(true);
     try {
-      localStorage.removeItem(SESSION_KEY);
-    } catch {}
-    setCurrentUserProfile(null);
-    setUsername('');
-    setUserPassword(undefined);
-    setUserEmail(undefined);
-    setUserAge(undefined);
-    setUserGender(undefined);
-    setAuthMode('login');
-    setScreenStep('auth');
+      await logout();
+    } catch (err) {
+      console.warn('Logout error:', err);
+    } finally {
+      setCurrentUserProfile(null);
+      setUsername('');
+      setUserPassword(undefined);
+      setUserEmail(undefined);
+      setUserAge(undefined);
+      setUserGender(undefined);
+      setAuthMode('login');
+      setScreenStep('auth');
+      setIsAuthChecking(false);
+    }
   };
+
+  if (isAuthChecking) {
+    return (
+      <main className="min-h-screen w-full bg-[#121316] text-neutral-100 flex flex-col items-center justify-center select-none animate-pulse">
+        <ChatlaxyLogo size="lg" className="mb-2" />
+        <span className="text-xs text-neutral-500 font-mono">Verifying secure session...</span>
+      </main>
+    );
+  }
 
   // Screen 4: Admin Panel Screen
   if (screenStep === 'admin' && currentUserProfile) {

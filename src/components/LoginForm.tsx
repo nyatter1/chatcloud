@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
-import { getUserFromFirestore } from '../services/apiService';
+import { login } from '../services/apiService';
 import { ProfileData } from '../types/bio';
 
 interface LoginFormProps {
@@ -42,28 +42,19 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     setIsLoading(true);
 
     try {
-      // Check live Firestore account
       const cleanUsername = identifier.trim();
-      const firestoreUser = await getUserFromFirestore(cleanUsername);
+      const user = await login(cleanUsername, password);
 
-      if (!firestoreUser) {
-        setGeneralError('Account not found in Firestore. Please register first.');
+      if (!user) {
+        setGeneralError('Incorrect username or password. Please try again.');
         setIsLoading(false);
         return;
       }
 
-      // Check password if stored
-      if (firestoreUser.password && firestoreUser.password !== password) {
-        setGeneralError('Incorrect password. Please try again.');
-        setIsLoading(false);
-        return;
-      }
-
-      // Successful live login
-      onLoginSuccess(firestoreUser);
+      onLoginSuccess(user);
     } catch (err: any) {
       console.error('Login error:', err);
-      setGeneralError('Unable to connect to database. Please check your internet connection.');
+      setGeneralError('Incorrect username or password. Please try again.');
     } finally {
       setIsLoading(false);
     }

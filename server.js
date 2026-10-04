@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import crypto from 'crypto';
 import dbService from './services/db.js';
 
 dotenv.config();
@@ -14,27 +15,51 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configurable CORS
-const frontendUrl = process.env.FRONTEND_URL;
-if (frontendUrl) {
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        if (!origin || origin === frontendUrl || origin.startsWith('http://localhost') || origin.startsWith('https://localhost')) {
-          callback(null, true);
-        } else {
-          callback(null, true);
-        }
-      },
-      credentials: true,
-    })
-  );
-} else {
-  app.use(cors());
-}
+// Configurable CORS with secure credentials support for Session Cookies
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Mirror request origin to allow HTTP-Only cookie transfer
+      callback(null, true);
+    },
+    credentials: true,
+  })
+);
 
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+
+// Helper function to parse HTTP cookies manually
+function parseCookies(cookieHeader) {
+  const cookies = {};
+  if (!cookieHeader) return cookies;
+  cookieHeader.split(';').forEach((cookie) => {
+    const parts = cookie.split('=');
+    const name = parts[0].trim();
+    const val = (parts[1] || '').trim();
+    if (name) cookies[name] = val;
+  });
+  return cookies;
+}
+
+// Cookie parser middleware
+app.use((req, res, next) => {
+  req.cookies = parseCookies(req.headers.cookie);
+  next();
+});
+
+// PBKDF2 Password hashing utilities
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  const [salt, hash] = stored.split(':');
+  const verifyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return hash === verifyHash;
+}
 
 // ====================================================
 // 1. HEALTH ENDPOINT
@@ -44,6 +69,157 @@ app.get('/health', (req, res) => {
     status: 'ok',
     service: 'chatlaxy',
   });
+});
+
+// ====================================================
+// AUTHENTICATION SYSTEM (COOKIES & DATABASE SESSIONS)
+// ====================================================
+
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { username, password, profileData } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+    const cleanUsername = username.trim();
+    if (cleanUsername.length < 2 || cleanUsername.length > 20) {
+      return res.status(400).json({ error: 'Username must be between 2 and 20 characters' });
+    }
+    const key = cleanUsername.toLowerCase();
+
+    // Enforce uniqueness
+    const existing = await dbService.getDoc('users', key);
+    if (existing) {
+      return res.status(400).json({ error: 'Username is already taken' });
+    }
+
+    // Hash & store private credentials securely (separate from public profiles)
+    const passwordHash = hashPassword(password);
+    await dbService.setDoc('credentials', key, { username: cleanUsername, passwordHash }, false);
+
+    // Save profile to users collection
+    const defaultProfile = {
+      username: cleanUsername,
+      profilePicture: null,
+      banner: null,
+      mood: 'Exploring Chatlaxy',
+      bioSegments: [],
+      rank: 'MEMBER',
+      wallet: { ruby: 25, gold: 1000 },
+      lastDailyClaim: 0,
+      dailyMessagesCount: 0,
+      ...(profileData || {})
+    };
+    await dbService.setDoc('users', key, defaultProfile, false);
+
+    // Create session token and persist to database
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+    await dbService.setDoc('sessions', sessionToken, { username: cleanUsername, expiresAt }, false);
+
+    // Set secure HttpOnly session cookie
+    res.cookie('chatlaxy_session', sessionToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 30 * 24 * 60 * 60 * 1000
+    });
+
+    res.status(201).json(defaultProfile);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+    const key = username.trim().toLowerCase();
+
+    // Verify credentials
+    const creds = await dbService.getDoc('credentials', key);
+    if (!creds || !verifyPassword(password, creds.passwordHash)) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    // Retrieve user profile
+    let profile = await dbService.getDoc('users', key);
+    if (!profile) {
+      profile = {
+        username: creds.username,
+        profilePicture: null,
+        banner: null,
+        mood: 'Exploring Chatlaxy',
+        bioSegments: [],
+        rank: 'MEMBER',
+        wallet: { ruby: 25, gold: 1000 },
+        lastDailyClaim: 0,
+        dailyMessagesCount: 0
+      };
+      await dbService.setDoc('users', key, profile, false);
+    }
+
+    // Create persistent session token
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    await dbService.setDoc('sessions', sessionToken, { username: profile.username, expiresAt }, false);
+
+    // Set HttpOnly session cookie
+    res.cookie('chatlaxy_session', sessionToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 30 * 24 * 60 * 60 * 1000
+    });
+
+    res.json(profile);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    const token = req.cookies['chatlaxy_session'];
+    if (!token) {
+      return res.json({ authenticated: false });
+    }
+
+    const session = await dbService.getDoc('sessions', token);
+    if (!session || session.expiresAt < Date.now()) {
+      return res.json({ authenticated: false });
+    }
+
+    const key = session.username.toLowerCase();
+    const profile = await dbService.getDoc('users', key);
+    if (!profile) {
+      return res.json({ authenticated: false });
+    }
+
+    res.json({ authenticated: true, user: profile });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  try {
+    const token = req.cookies['chatlaxy_session'];
+    if (token) {
+      await dbService.deleteDoc('sessions', token);
+    }
+    res.clearCookie('chatlaxy_session', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none'
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ====================================================
@@ -104,16 +280,9 @@ app.delete('/api/users/:username', async (req, res) => {
 // ====================================================
 app.get('/api/messages', async (req, res) => {
   try {
-    const { serverId, channelId } = req.query;
     const list = await dbService.getCollection('messages');
-    let filtered = list;
-    if (serverId && channelId) {
-      filtered = list.filter((m) => m.serverId === serverId && m.channelId === channelId);
-    } else {
-      filtered = list.filter((m) => !m.serverId);
-    }
-    filtered.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-    res.json(filtered.slice(-250));
+    list.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    res.json(list.slice(-250));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

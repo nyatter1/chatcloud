@@ -14,7 +14,7 @@ let localRiggedCache: string[] = [];
 let localNewsCache: NewsPost[] = [];
 const localNotificationsCache: Record<string, AppNotification[]> = {};
 
-// Helper fetch wrapper
+// Helper fetch wrapper with HttpOnly cookie support
 async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
   try {
     const res = await fetch(`${API_BASE}${endpoint}`, {
@@ -22,6 +22,7 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T |
         'Content-Type': 'application/json',
         ...(options?.headers || {}),
       },
+      credentials: 'include',
       ...options,
     });
     if (!res.ok) return null;
@@ -101,16 +102,11 @@ export async function deleteUserFromFirestore(username: string): Promise<void> {
 // ----------------------------------------------------
 // 2. MESSAGES
 // ----------------------------------------------------
-export function subscribeToMessages(
-  callback: (messages: ChatMessage[]) => void,
-  serverId?: string | null,
-  channelId?: string | null
-): () => void {
+export function subscribeToMessages(callback: (messages: ChatMessage[]) => void): () => void {
   let isMounted = true;
 
   const fetchMessages = async () => {
-    const q = serverId && channelId ? `?serverId=${encodeURIComponent(serverId)}&channelId=${encodeURIComponent(channelId)}` : '';
-    const list = await apiFetch<ChatMessage[]>(`/api/messages${q}`);
+    const list = await apiFetch<ChatMessage[]>('/api/messages');
     if (list && isMounted) {
       localMessagesCache = list;
       callback([...localMessagesCache]);
@@ -448,4 +444,37 @@ export async function deleteServerRole(serverId: string, roleId: string): Promis
   });
   return !!res?.success;
 }
+
+// ----------------------------------------------------
+// 8. AUTHENTICATION SYSTEM
+// ----------------------------------------------------
+export async function signup(
+  username: string,
+  password: string,
+  profileData?: Partial<ProfileData>
+): Promise<ProfileData | null> {
+  return await apiFetch<ProfileData>('/api/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, profileData }),
+  });
+}
+
+export async function login(username: string, password: string): Promise<ProfileData | null> {
+  return await apiFetch<ProfileData>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await apiFetch<{ success: boolean }>('/api/auth/logout', {
+    method: 'POST',
+  });
+}
+
+export async function getCurrentUser(): Promise<{ authenticated: boolean; user?: ProfileData }> {
+  const res = await apiFetch<{ authenticated: boolean; user?: ProfileData }>('/api/auth/me');
+  return res || { authenticated: false };
+}
+
 

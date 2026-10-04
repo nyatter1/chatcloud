@@ -201,13 +201,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     }
   };
 
-  // 1. Subscribe to Live Messages (filtered by server and channel if active)
+  // 1. Subscribe to Live Messages
   useEffect(() => {
     const unsubscribe = subscribeToMessages((liveMessages) => {
       setMessages(liveMessages);
-    }, activeServer?.id || null, activeChannel?.id || null);
+    });
     return () => unsubscribe();
-  }, [activeServer?.id, activeChannel?.id]);
+  }, []);
 
   // 2. Subscribe to Live Registered Users
   useEffect(() => {
