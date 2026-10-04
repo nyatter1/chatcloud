@@ -2,6 +2,9 @@ import { ProfileData } from '../types/bio';
 import { ChatMessage, GambleResultPayload } from '../types/chat';
 import { SYSTEM_BOT } from '../constants/systemBot';
 import { saveUserToFirestore, setRiggedUserInFirestore, getUserFromFirestore } from '../services/firestoreService';
+import { getRankConfig, RANKS } from '../constants/ranks';
+import { RankId } from '../types/ranks';
+import { addAuditLog } from './auditLogger';
 
 export interface CommandExecutionResult {
   isCommand: boolean;
@@ -107,7 +110,167 @@ export function handleChatCommand(
     };
   }
 
-  // 2. /GIVE (DEV ONLY)
+  // 2. /RANK COMMAND (STAFF: DEV, FOUNDER, CO-OWNER, SUPERADMIN, ADMIN)
+  // Usage: /rank (username) rank OR /rank username rank
+  if (command === 'rank') {
+    const canRank =
+      isDev ||
+      currentUser.rank === 'FOUNDER' ||
+      currentUser.rank === 'CO-OWNER' ||
+      currentUser.rank === 'SUPERADMIN' ||
+      currentUser.rank === 'ADMIN';
+
+    if (!canRank) {
+      return {
+        isCommand: true,
+        privateFeedback: {
+          type: 'error',
+          message: 'Only Staff (Admin, Founder, Dev) can use /rank.',
+        },
+      };
+    }
+
+    // Match /rank (username) rank or /rank username rank or /rank "username" rank
+    const match = trimmed.match(/^\/rank\s+(?:\(([^)]+)\)|"([^"]+)"|(\S+))\s+(.+)$/i);
+    if (!match) {
+      return {
+        isCommand: true,
+        privateFeedback: {
+          type: 'error',
+          message: 'Usage: /rank (username) rank — e.g. /rank (hayden) admin',
+        },
+      };
+    }
+
+    const rawTarget = (match[1] || match[2] || match[3] || '').trim().replace(/^[@]+/g, '');
+    const rawRank = (match[4] || '').trim().replace(/^[()"]+|[()"]+$/g, '');
+
+    if (!rawTarget || !rawRank) {
+      return {
+        isCommand: true,
+        privateFeedback: {
+          type: 'error',
+          message: 'Usage: /rank (username) rank — e.g. /rank (hayden) admin',
+        },
+      };
+    }
+
+    const rankAliases: Record<string, RankId> = {
+      dev: 'DEV',
+      developer: 'DEV',
+      founder: 'FOUNDER',
+      mop: 'MOP',
+      coowner: 'CO-OWNER',
+      'co-owner': 'CO-OWNER',
+      co_owner: 'CO-OWNER',
+      superadmin: 'SUPERADMIN',
+      'super-admin': 'SUPERADMIN',
+      admin: 'ADMIN',
+      administrator: 'ADMIN',
+      mod: 'MODERATOR',
+      moderator: 'MODERATOR',
+      bot: 'BOT',
+      elite: 'ELITE',
+      supervip: 'SUPER-VIP',
+      'super-vip': 'SUPER-VIP',
+      vip: 'VIP',
+    };
+
+    const cleanRankKey = rawRank.toLowerCase().trim();
+    const matchedRankId: RankId | undefined =
+      rankAliases[cleanRankKey] ||
+      (RANKS[rawRank.toUpperCase() as RankId] ? (rawRank.toUpperCase() as RankId) : undefined);
+
+    if (!matchedRankId) {
+      return {
+        isCommand: true,
+        privateFeedback: {
+          type: 'error',
+          message: `Unknown rank "${rawRank}". Available: DEV, FOUNDER, MOP, CO-OWNER, SUPERADMIN, ADMIN, MODERATOR, BOT, ELITE, SUPER-VIP, VIP.`,
+        },
+      };
+    }
+
+    const rankConfig = getRankConfig(matchedRankId);
+    const cleanTarget = rawTarget.toLowerCase();
+
+    // Check if ranking current user
+    let updatedProfile: ProfileData | undefined;
+    if (cleanTarget === currentUser.username.toLowerCase()) {
+      updatedProfile = {
+        ...currentUser,
+        rank: matchedRankId,
+      };
+    }
+
+    // Persist to local storage if present
+    try {
+      const rawAccounts = localStorage.getItem('chatcloud_users');
+      if (rawAccounts) {
+        const accounts: Record<string, ProfileData> = JSON.parse(rawAccounts);
+        if (accounts[cleanTarget]) {
+          accounts[cleanTarget] = {
+            ...accounts[cleanTarget],
+            rank: matchedRankId,
+          };
+          localStorage.setItem('chatcloud_users', JSON.stringify(accounts));
+        }
+      }
+    } catch {}
+
+    // Update live in Firestore
+    getUserFromFirestore(rawTarget)
+      .then((existing) => {
+        if (existing) {
+          saveUserToFirestore({
+            ...existing,
+            rank: matchedRankId,
+          }).catch(console.error);
+        } else {
+          saveUserToFirestore({
+            username: rawTarget,
+            rank: matchedRankId,
+            profilePicture: null,
+            banner: null,
+            mood: '',
+            bioSegments: [],
+          }).catch(console.error);
+        }
+      })
+      .catch(console.error);
+
+    // Audit log
+    addAuditLog(
+      currentUser.username,
+      'Ranked User via Command',
+      `${currentUser.username} set ${rawTarget}'s rank to ${rankConfig?.name || matchedRankId} using /rank`,
+      'admin'
+    );
+
+    const publicMessage: ChatMessage = {
+      id: `bot-rank-${Date.now()}`,
+      senderId: 'system',
+      senderName: SYSTEM_BOT.name,
+      senderHandle: SYSTEM_BOT.handle,
+      senderAvatar: SYSTEM_BOT.avatar,
+      isSystemBot: true,
+      content: `🎉 ${rawTarget} has been ranked up to ${rankConfig?.name || matchedRankId} by ${currentUser.username}!`,
+      timestamp: Date.now(),
+      formattedTime,
+    };
+
+    return {
+      isCommand: true,
+      publicMessage,
+      updatedProfile,
+      privateFeedback: {
+        type: 'success',
+        message: `Successfully set ${rawTarget}'s rank to ${rankConfig?.name || matchedRankId}!`,
+      },
+    };
+  }
+
+  // 3. /GIVE (DEV ONLY)
   // Usage: /give <gold|rubies> <username> <amount>
   if (command === 'give') {
     if (!isDev) {

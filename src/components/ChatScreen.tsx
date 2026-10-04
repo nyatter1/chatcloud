@@ -7,7 +7,6 @@ import { ProfileMenuDropdown } from './ProfileMenuDropdown';
 import { OnlinePlayersPanel } from './OnlinePlayersPanel';
 import { ProfileModal } from './ProfileModal';
 import { ChatBackgroundModal } from './ChatBackgroundModal';
-import { AvatarWithBorder } from './AvatarWithBorder';
 import { handleChatCommand } from '../utils/commandHandler';
 import { isFounderOrAbove } from '../utils/permissions';
 import { addAuditLog } from '../utils/auditLogger';
@@ -17,6 +16,7 @@ import {
   deleteMessageFromFirestore,
   clearAllMessagesInFirestore,
   subscribeToUsers,
+  saveUserToFirestore,
 } from '../services/firestoreService';
 
 interface ChatScreenProps {
@@ -67,6 +67,53 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     });
     return () => unsubscribe();
   }, []);
+
+  // 3. Auto-sync missing user profile pictures and banners from chat messages & active session into Firestore
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const updatesToSave: Record<string, ProfileData> = {};
+
+    messages.forEach((msg) => {
+      if (msg.senderAvatar && msg.senderName && !msg.isSystemBot) {
+        const key = msg.senderName.toLowerCase().trim();
+        const existingUser = allUsers[key];
+        if (existingUser && !existingUser.profilePicture) {
+          updatesToSave[key] = {
+            ...existingUser,
+            profilePicture: msg.senderAvatar,
+          };
+        }
+      }
+    });
+
+    if (currentUser.profilePicture || currentUser.banner) {
+      const currentKey = currentUser.username.toLowerCase().trim();
+      const existingUser = allUsers[currentKey];
+      if (
+        existingUser &&
+        (!existingUser.profilePicture || !existingUser.banner)
+      ) {
+        updatesToSave[currentKey] = {
+          ...existingUser,
+          profilePicture: currentUser.profilePicture || existingUser.profilePicture || null,
+          banner: currentUser.banner || existingUser.banner || null,
+        };
+      }
+    }
+
+    const keysToUpdate = Object.keys(updatesToSave);
+    if (keysToUpdate.length > 0) {
+      keysToUpdate.forEach(async (key) => {
+        const profile = updatesToSave[key];
+        try {
+          await saveUserToFirestore(profile);
+        } catch (err) {
+          console.warn(`Failed to sync profile for ${key}:`, err);
+        }
+      });
+    }
+  }, [messages, allUsers, currentUser]);
 
   // Auto-dismiss private notice after 6s
   useEffect(() => {
@@ -217,21 +264,24 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           chatlaxy
         </span>
 
-        {/* Top Right: ONLY the user's profile picture with Custom PFP Border */}
+        {/* Top Right: ONLY the user's profile picture */}
         <div className="flex items-center">
           <button
             type="button"
             onClick={() => setIsProfileMenuOpen((prev) => !prev)}
             aria-label="Open profile menu"
-            className="cursor-pointer focus:outline-none focus:ring-2 focus:ring-zinc-400 rounded-full transition-all"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-[#242630] border-2 border-[#373946] hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-zinc-400 transition-all flex items-center justify-center cursor-pointer shadow-sm"
           >
-            <AvatarWithBorder
-              src={currentUser.profilePicture}
-              borderId={currentUser.effects?.pfpBorder || currentUser.pfpBorder}
-              alt={currentUser.username}
-              size="sm"
-              shape="circle"
-            />
+            {currentUser.profilePicture ? (
+              <img
+                src={currentUser.profilePicture}
+                alt={currentUser.username}
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <User className="w-5 h-5 text-neutral-400" />
+            )}
           </button>
         </div>
 
@@ -282,13 +332,6 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
                   // Alternating background: even is slightly lighter dark, odd is darker underneath
                   const isAlternateBg = index % 2 === 1;
 
-                  const senderBorder = msg.isSystemBot
-                    ? null
-                    : (isCurrentUser
-                        ? (currentUser.effects?.pfpBorder || currentUser.pfpBorder)
-                        : (allUsers[msg.senderName.toLowerCase().trim()]?.effects?.pfpBorder ||
-                           allUsers[msg.senderName.toLowerCase().trim()]?.pfpBorder || null));
-
                   return (
                     <ChatMessageItem
                       key={msg.id}
@@ -296,7 +339,6 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
                       isCurrentUser={isCurrentUser}
                       isAlternateBg={isAlternateBg}
                       canModerate={isFounderOrAbove(currentUser)}
-                      senderBorder={senderBorder}
                       onReply={handleReply}
                       onHide={handleHide}
                       onDelete={handleDelete}

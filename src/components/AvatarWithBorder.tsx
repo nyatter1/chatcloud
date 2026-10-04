@@ -1,7 +1,5 @@
 import React from 'react';
 import { User, Bot } from 'lucide-react';
-import { getBorderByIdOrName } from '../constants/borders';
-import { BorderRenderer } from './BorderRenderer';
 
 interface AvatarWithBorderProps {
   src?: string | null;
@@ -16,16 +14,12 @@ interface AvatarWithBorderProps {
 
 export const AvatarWithBorder: React.FC<AvatarWithBorderProps> = ({
   src,
-  borderId,
   alt = 'User avatar',
   size = 'md',
   isSystemBot = false,
   className = '',
   shape = 'circle',
-  showBorder = true,
 }) => {
-  const border = showBorder ? getBorderByIdOrName(borderId) : null;
-
   // Outer container dimensions
   let sizeClasses = 'w-10 h-10';
   let iconSize = 'w-5 h-5';
@@ -84,9 +78,6 @@ export const AvatarWithBorder: React.FC<AvatarWithBorderProps> = ({
           <User className={`${iconSize} text-neutral-400`} />
         )}
       </div>
-
-      {/* Native Vector SVG PFP Border */}
-      {border && <BorderRenderer borderId={border.id} />}
     </div>
   );
 };

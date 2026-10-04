@@ -1,9 +1,9 @@
 import React from 'react';
+import { User } from 'lucide-react';
 import { ProfileData } from '../types/bio';
 import { SYSTEM_BOT } from '../constants/systemBot';
 import { getRankConfig } from '../constants/ranks';
 import { RankId } from '../types/ranks';
-import { AvatarWithBorder } from './AvatarWithBorder';
 
 interface OnlinePlayersPanelProps {
   currentUser: ProfileData;
@@ -35,7 +35,6 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
       id: 'system',
       name: SYSTEM_BOT.name,
       avatar: SYSTEM_BOT.avatar,
-      borderId: null,
       isSystemBot: true,
       mood: '',
       rank: SYSTEM_BOT.rank as RankId,
@@ -43,8 +42,7 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
     {
       id: currentUser.username,
       name: currentUser.username,
-      avatar: currentUser.profilePicture,
-      borderId: currentUser.effects?.pfpBorder || currentUser.pfpBorder || null,
+      avatar: currentUser.profilePicture || allUsers[currentUser.username.toLowerCase().trim()]?.profilePicture || null,
       isSystemBot: false,
       mood: currentUser.mood?.trim() || '',
       rank: currentUserRank,
@@ -53,7 +51,6 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
       id: u.username,
       name: u.username,
       avatar: u.profilePicture,
-      borderId: u.effects?.pfpBorder || u.pfpBorder || null,
       isSystemBot: false,
       mood: u.mood?.trim() || '',
       rank: (u.rank || (u.username.toLowerCase() === 'null' ? 'DEV' : 'VIP')) as RankId,
@@ -94,15 +91,19 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
                 className="w-full flex items-center justify-between p-2 rounded-md hover:bg-[#1c1d23] transition-colors cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-zinc-600 gap-2"
               >
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  {/* Profile Picture with Custom PFP Border */}
-                  <AvatarWithBorder
-                    src={user.avatar}
-                    borderId={user.borderId}
-                    isSystemBot={user.isSystemBot}
-                    alt={user.name}
-                    size="sm"
-                    shape="circle"
-                  />
+                  {/* Profile Picture */}
+                  <div className="w-8 h-8 rounded-full overflow-hidden bg-[#242630] border border-[#343644] shrink-0 flex items-center justify-center">
+                    {user.avatar ? (
+                      <img
+                        src={user.avatar}
+                        alt={user.name}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <User className="w-4 h-4 text-neutral-400" />
+                    )}
+                  </div>
 
                   {/* Name & Mood */}
                   <div className="flex flex-col min-w-0 flex-1">

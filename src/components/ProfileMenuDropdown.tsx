@@ -73,7 +73,7 @@ export const ProfileMenuDropdown: React.FC<ProfileMenuDropdownProps> = ({
   return (
     <div
       ref={dropdownRef}
-      className="absolute right-4 sm:right-6 top-16 z-50 w-72 bg-[#18191d] border border-[#2c2e37] rounded-sm shadow-2xl shadow-black/80 py-2 text-left animate-in fade-in zoom-in-95 duration-100"
+      className="absolute right-2 sm:right-6 top-14 sm:top-16 z-50 w-72 max-w-[calc(100vw-1rem)] bg-[#18191d] border border-[#2c2e37] rounded-sm shadow-2xl shadow-black/80 py-2 text-left animate-in fade-in zoom-in-95 duration-100"
     >
       {/* ================================================== */}
       {/* 1. WALLET SUBMENU VIEW                             */}

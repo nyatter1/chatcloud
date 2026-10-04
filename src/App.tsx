@@ -105,7 +105,6 @@ export default function App() {
       effects: {
         starEffect: true,
         borderEffect: 'subtle-glow',
-        pfpBorder: 'square-neon',
       },
     };
 

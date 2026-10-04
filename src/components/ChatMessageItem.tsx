@@ -9,7 +9,7 @@ interface ChatMessageItemProps {
   isCurrentUser: boolean;
   isAlternateBg: boolean;
   canModerate?: boolean;
-  senderBorder?: string | null;
+  senderBanner?: string | null;
   onReply: (message: ChatMessage) => void;
   onHide: (id: string) => void;
   onDelete: (id: string) => void;
@@ -21,7 +21,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   isCurrentUser,
   isAlternateBg,
   canModerate,
-  senderBorder,
+  senderBanner,
   onReply,
   onHide,
   onDelete,
@@ -62,19 +62,28 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
   return (
     <div
-      className={`group relative w-full px-4 sm:px-6 py-3 sm:py-3.5 transition-colors duration-100 ${bgClass} hover:brightness-125 backdrop-blur-[1px]`}
+      className={`group relative w-full px-3 sm:px-6 py-2.5 sm:py-3.5 transition-colors duration-100 ${bgClass} hover:brightness-125 backdrop-blur-[1px]`}
     >
-      <div className="flex items-start gap-3 w-full">
+      <div className="flex items-start gap-2.5 sm:gap-3 w-full">
         {/* Avatar with Border - Clickable to open Profile */}
         <button
           type="button"
           onClick={handleProfileClick}
           title={`View ${message.senderName}'s profile`}
-          className="shrink-0 cursor-pointer focus:outline-none"
+          className="shrink-0 cursor-pointer focus:outline-none relative flex items-center justify-center"
         >
+          {senderBanner && (
+            <div className="absolute -inset-1 pointer-events-none rounded-full overflow-hidden opacity-50 blur-[2px]">
+              <img
+                src={senderBanner}
+                alt=""
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
           <AvatarWithBorder
             src={message.senderAvatar}
-            borderId={senderBorder}
             alt={message.senderName}
             size="md"
             isSystemBot={message.isSystemBot}
@@ -83,7 +92,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
         </button>
 
         {/* Message Body */}
-        <div className="flex-1 min-w-0 pr-8">
+        <div className="flex-1 min-w-0 pr-6 sm:pr-8">
           {/* Header: Name, Timestamp */}
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <button
@@ -167,14 +176,14 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
         </div>
       </div>
 
-      {/* Hover Action Menu Button */}
-      <div className="absolute top-2.5 right-4 flex items-center gap-1 z-10">
+      {/* Action Menu Button (visible on mobile tap, hover on desktop) */}
+      <div className="absolute top-2.5 right-2 sm:right-4 flex items-center gap-1 z-10">
         <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={() => setMenuOpen((prev) => !prev)}
             aria-label="Message options"
-            className="p-1 rounded-sm text-neutral-400 hover:text-neutral-100 hover:bg-[#252733] transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+            className="p-1 sm:p-1 rounded-sm text-neutral-400 hover:text-neutral-100 hover:bg-[#252733] transition-colors opacity-70 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
           >
             <MoreHorizontal className="w-4 h-4" />
           </button>

@@ -80,11 +80,11 @@ export const ChatBackgroundModal: React.FC<ChatBackgroundModalProps> = ({
   const hasCustomBackground = Boolean(currentBackground || selectedBackground);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
       {/* Click backdrop to cancel */}
       <div className="absolute inset-0" onClick={handleCancel} />
 
-      <div className="relative w-full max-w-[360px] bg-[#16171d] border border-[#2c2e37] rounded-sm p-5 shadow-2xl shadow-black/90 z-10 text-left flex flex-col gap-4">
+      <div className="relative w-full max-w-[360px] max-h-[92dvh] overflow-y-auto bg-[#16171d] border border-[#2c2e37] rounded-sm p-4 sm:p-5 shadow-2xl shadow-black/90 z-10 text-left flex flex-col gap-3.5 sm:gap-4">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#262832] pb-3">
           <h3 className="text-sm font-bold text-neutral-100 uppercase tracking-wide">

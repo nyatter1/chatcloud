@@ -243,11 +243,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   });
 
   return (
-    <div className="flex h-screen w-full bg-[#0f1013] text-neutral-100 select-none overflow-hidden font-sans">
+    <div className="flex flex-col md:flex-row h-screen h-[100dvh] w-full bg-[#0f1013] text-neutral-100 select-none overflow-hidden font-sans">
+      {/* Mobile Top Header + Tabs (visible on mobile only) */}
+      <header className="md:hidden bg-[#141518] border-b border-[#24252c] flex flex-col shrink-0 z-20">
+        <div className="px-3.5 py-2.5 flex items-center justify-between border-b border-[#20222a]">
+          <button
+            type="button"
+            onClick={onBackToChat}
+            className="p-1.5 bg-[#1e2026] text-neutral-300 rounded flex items-center gap-1 text-xs cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Chat</span>
+          </button>
+          <span className="text-xs font-bold text-neutral-100 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Admin Panel
+          </span>
+          <span className="text-[10px] text-neutral-500 font-mono">v1.0</span>
+        </div>
+        {/* Horizontal scrollable tab chips */}
+        <div className="flex items-center gap-1 overflow-x-auto px-2 py-1.5">
+          {[
+            { id: 'dashboard' as AdminTab, label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'members' as AdminTab, label: `Members (${totalUsers})`, icon: Users },
+            { id: 'console' as AdminTab, label: `Console (${logs.length})`, icon: Terminal },
+            { id: 'action' as AdminTab, label: 'Action', icon: Zap },
+            { id: 'addons' as AdminTab, label: 'Addons', icon: Puzzle },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap cursor-pointer transition-colors shrink-0 ${
+                  isActive
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'bg-[#1b1d24] text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </header>
+
       {/* ================================================== */}
-      {/* 1. LEFT SIDEBAR                                    */}
+      {/* 1. LEFT SIDEBAR (Desktop)                          */}
       {/* ================================================== */}
-      <aside className="w-60 sm:w-64 bg-[#141518] border-r border-[#24252c] flex flex-col shrink-0">
+      <aside className="hidden md:flex w-60 sm:w-64 bg-[#141518] border-r border-[#24252c] flex-col shrink-0">
         {/* Top Header / Back button */}
         <div className="p-4 border-b border-[#24252c] flex items-center justify-between">
           <div className="flex items-center gap-2">

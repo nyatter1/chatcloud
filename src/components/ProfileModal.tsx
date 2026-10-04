@@ -3,22 +3,27 @@ import {
   X,
   Camera,
   Edit2,
+  User,
   ChevronLeft,
   ChevronRight,
   Check,
-  Sparkles,
-  LayoutGrid,
+  Loader2,
+  Music,
+  Volume2,
+  VolumeX,
+  Upload,
+  Play,
+  Pause,
+  Trash2,
 } from 'lucide-react';
 import { ProfileData } from '../types/bio';
 import { SYSTEM_BOT } from '../constants/systemBot';
 import { getRankConfig } from '../constants/ranks';
-import { BORDERS, getBorderByIdOrName } from '../constants/borders';
 import { RankId } from '../types/ranks';
 import { isFounderOrAbove } from '../utils/permissions';
 import { addAuditLog } from '../utils/auditLogger';
-import { uploadImageToCloudinary } from '../utils/cloudinary';
+import { uploadImageToCloudinary, uploadAudioToCloudinary } from '../utils/cloudinary';
 import { saveUserToFirestore, getUserFromFirestore } from '../services/firestoreService';
-import { AvatarWithBorder } from './AvatarWithBorder';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -30,8 +35,7 @@ interface ProfileModalProps {
 }
 
 type ProfileTab = 'info' | 'about_me';
-type EditMode = 'view' | 'edit_menu' | 'edit_info' | 'edit_customisation' | 'edit_bio' | 'edit_mood';
-type CustomiseView = 'single' | 'grid';
+type EditMode = 'view' | 'edit_menu' | 'edit_info' | 'edit_bio' | 'edit_mood' | 'edit_music';
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
   isOpen,
@@ -43,14 +47,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<ProfileTab>('info');
   const [editMode, setEditMode] = useState<EditMode>('view');
-  const [customiseView, setCustomiseView] = useState<CustomiseView>('single');
 
   // Active profile state
   const [activeProfile, setActiveProfile] = useState<ProfileData>(currentUser);
-
-  // Border Customisation state
-  const [selectedBorderIndex, setSelectedBorderIndex] = useState<number>(0);
-  const [justEquipped, setJustEquipped] = useState(false);
 
   // Form states for in-profile editor
   const [editUsername, setEditUsername] = useState(currentUser.username);
@@ -60,9 +59,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [editBio, setEditBio] = useState(
     currentUser.bioSegments?.map((s) => s.text).join('') || ''
   );
+  const [editMusic, setEditMusic] = useState(currentUser.profileMusic || '');
+
+  const [isUploadingPfp, setIsUploadingPfp] = useState(false);
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const [isUploadingMusic, setIsUploadingMusic] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
 
   const pfpInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+  const musicFileInputRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Load target profile from allUsers, currentUser, or live Firestore
   useEffect(() => {
@@ -78,7 +86,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         age: '999',
         gender: '',
         rank: 'BOT',
-        pfpBorder: null,
       });
       return;
     }
@@ -88,11 +95,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       targetUserId.toLowerCase().trim() === currentUser.username.toLowerCase().trim()
     ) {
       setActiveProfile(currentUser);
-      const currentBorder = currentUser.effects?.pfpBorder || currentUser.pfpBorder;
-      const borderItem = getBorderByIdOrName(currentBorder);
-      if (borderItem) {
-        setSelectedBorderIndex(borderItem.index);
-      }
       return;
     }
 
@@ -101,12 +103,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     const liveMatch = allUsers[cleanTarget];
     if (liveMatch) {
       setActiveProfile(liveMatch);
-      const currentBorder = liveMatch.effects?.pfpBorder || liveMatch.pfpBorder;
-      const borderItem = getBorderByIdOrName(currentBorder);
-      if (borderItem) {
-        setSelectedBorderIndex(borderItem.index);
-      }
     } else {
+      // Set initial placeholder while fetching from Firestore
       setActiveProfile({
         username: targetUserId,
         profilePicture: null,
@@ -114,7 +112,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         mood: '',
         bioSegments: [],
         rank: 'VIP',
-        pfpBorder: null,
       });
     }
 
@@ -123,11 +120,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       .then((doc) => {
         if (doc) {
           setActiveProfile(doc);
-          const currentBorder = doc.effects?.pfpBorder || doc.pfpBorder;
-          const borderItem = getBorderByIdOrName(currentBorder);
-          if (borderItem) {
-            setSelectedBorderIndex(borderItem.index);
-          }
         }
       })
       .catch((err) => {
@@ -142,19 +134,40 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setEditGender(activeProfile.gender || '');
     setEditMood(activeProfile.mood || '');
     setEditBio(activeProfile.bioSegments?.map((s) => s.text).join('') || '');
-
-    const currentBorder = activeProfile.effects?.pfpBorder || activeProfile.pfpBorder;
-    const borderItem = getBorderByIdOrName(currentBorder);
-    if (borderItem) {
-      setSelectedBorderIndex(borderItem.index);
-    }
+    setEditMusic(activeProfile.profileMusic || '');
   }, [activeProfile, editMode]);
+
+  // Auto-play profile music instantly on loop when viewing profile
+  useEffect(() => {
+    if (isOpen && activeProfile.profileMusic && audioRef.current) {
+      audioRef.current.currentTime = 0;
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => setIsMusicPlaying(true))
+          .catch((err) => {
+            console.log('Audio autoplay prevented by browser policy:', err);
+            setIsMusicPlaying(false);
+          });
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsMusicPlaying(false);
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, [isOpen, activeProfile.profileMusic]);
 
   // Reset editMode when opening / switching profiles
   useEffect(() => {
     setEditMode('view');
     setActiveTab('info');
-    setCustomiseView('single');
   }, [targetUserId, isOpen]);
 
   if (!isOpen || !targetUserId) return null;
@@ -181,22 +194,22 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   // Helper to persist updates to activeProfile (and currentUser if owner)
   const saveProfileData = async (updated: ProfileData, fieldDescription?: string) => {
     setActiveProfile(updated);
+    try {
+      await saveUserToFirestore(updated);
+      if (!isOwner && fieldDescription) {
+        addAuditLog(
+          currentUser.username,
+          'Edited User Profile',
+          `${currentUser.username} updated ${updated.username}'s ${fieldDescription}`,
+          'admin'
+        );
+      }
+    } catch (err) {
+      console.error('Error saving updated profile to Firestore:', err);
+    }
+
     if (isOwner) {
       onUpdateCurrentUser(updated);
-    } else {
-      try {
-        await saveUserToFirestore(updated);
-        if (fieldDescription) {
-          addAuditLog(
-            currentUser.username,
-            'Edited User Profile',
-            `${currentUser.username} updated ${updated.username}'s ${fieldDescription}`,
-            'admin'
-          );
-        }
-      } catch (err) {
-        console.error('Error saving updated profile to Firestore:', err);
-      }
     }
   };
 
@@ -204,28 +217,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handlePfpChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && canEdit) {
+      setIsUploadingPfp(true);
       try {
-        const cloudUrl = await uploadImageToCloudinary(file);
-        saveProfileData(
+        const cloudUrl = await uploadImageToCloudinary(file, { isBanner: false });
+        await saveProfileData(
           {
             ...activeProfile,
             profilePicture: cloudUrl,
           },
           'profile picture'
         );
-      } catch {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const result = event.target?.result as string;
-          saveProfileData(
-            {
-              ...activeProfile,
-              profilePicture: result,
-            },
-            'profile picture'
-          );
-        };
-        reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('PFP upload error:', err);
+      } finally {
+        setIsUploadingPfp(false);
       }
     }
   };
@@ -247,28 +252,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handleBannerChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && canEdit) {
+      setIsUploadingBanner(true);
       try {
-        const cloudUrl = await uploadImageToCloudinary(file);
-        saveProfileData(
+        const cloudUrl = await uploadImageToCloudinary(file, { isBanner: true });
+        await saveProfileData(
           {
             ...activeProfile,
             banner: cloudUrl,
           },
           'banner'
         );
-      } catch {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const result = event.target?.result as string;
-          saveProfileData(
-            {
-              ...activeProfile,
-              banner: result,
-            },
-            'banner'
-          );
-        };
-        reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Banner upload error:', err);
+      } finally {
+        setIsUploadingBanner(false);
       }
     }
   };
@@ -321,42 +318,78 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setEditMode('view');
   };
 
-  // Carousel navigation for borders
-  const handlePrevBorder = () => {
-    setSelectedBorderIndex((prev) => (prev > 0 ? prev - 1 : BORDERS.length - 1));
+  // Toggle music play / pause
+  const toggleMusicPlay = () => {
+    if (!audioRef.current) return;
+    if (isMusicPlaying) {
+      audioRef.current.pause();
+      setIsMusicPlaying(false);
+    } else {
+      audioRef.current
+        .play()
+        .then(() => setIsMusicPlaying(true))
+        .catch(() => setIsMusicPlaying(false));
+    }
   };
 
-  const handleNextBorder = () => {
-    setSelectedBorderIndex((prev) => (prev < BORDERS.length - 1 ? prev + 1 : 0));
+  // Handle uploading music MP3 file to Cloudinary with progress tracking
+  const handleMusicFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsUploadingMusic(true);
+      setUploadProgress(0);
+      try {
+        const cloudUrl = await uploadAudioToCloudinary(file, (pct) => {
+          setUploadProgress(pct);
+        });
+        setEditMusic(cloudUrl);
+      } catch (err) {
+        console.warn('Audio upload warning, fallback to local data URL:', err);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setEditMusic(event.target?.result as string);
+        };
+        reader.readAsDataURL(file);
+      } finally {
+        setIsUploadingMusic(false);
+      }
+    }
   };
 
-  // Select / Equip current border
-  const handleSelectBorder = (borderIdToEquip?: string | null) => {
-    if (!isOwner) return;
-    const borderId = borderIdToEquip !== undefined ? borderIdToEquip : BORDERS[selectedBorderIndex]?.id;
-    const updated: ProfileData = {
-      ...activeProfile,
-      pfpBorder: borderId || null,
-      effects: {
-        ...(activeProfile.effects || {}),
-        pfpBorder: borderId || undefined,
-      },
-    };
-    saveProfileData(updated, `PFP border to "${borderId || 'None'}"`);
-    setJustEquipped(true);
-    setTimeout(() => setJustEquipped(false), 2000);
+  // Save Music (Uploads to Cloudinary if needed and persists to profile)
+  const handleSaveMusic = async () => {
+    setIsUploadingMusic(true);
+    setUploadProgress(0);
+    try {
+      let finalMusicUrl = editMusic.trim();
+      if (
+        finalMusicUrl &&
+        !finalMusicUrl.startsWith('http://') &&
+        !finalMusicUrl.startsWith('https://')
+      ) {
+        finalMusicUrl = await uploadAudioToCloudinary(finalMusicUrl, (pct) => {
+          setUploadProgress(pct);
+        });
+      }
+      const updated = {
+        ...activeProfile,
+        profileMusic: finalMusicUrl || null,
+      };
+      await saveProfileData(updated, 'profile music');
+      setEditMode('view');
+    } catch (err) {
+      console.error('Error saving profile music:', err);
+    } finally {
+      setIsUploadingMusic(false);
+    }
   };
-
-  const currentEquippedBorderId = activeProfile.effects?.pfpBorder || activeProfile.pfpBorder;
-  const currentPreviewBorder = BORDERS[selectedBorderIndex] || BORDERS[0];
-  const isSelectedBorderEquipped = currentEquippedBorderId === currentPreviewBorder?.id;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
       {/* Click backdrop to close */}
       <div className="absolute inset-0" onClick={onClose} />
 
-      {/* Hidden file inputs for avatar & banner upload */}
+      {/* Hidden file inputs for avatar, banner & music upload */}
       <input
         ref={pfpInputRef}
         type="file"
@@ -371,6 +404,24 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         onChange={handleBannerChange}
         className="hidden"
       />
+      <input
+        ref={musicFileInputRef}
+        type="file"
+        accept="audio/*,.mp3"
+        onChange={handleMusicFileChange}
+        className="hidden"
+      />
+
+      {/* HTML5 Audio element for Profile Music */}
+      {activeProfile.profileMusic && (
+        <audio
+          ref={audioRef}
+          src={activeProfile.profileMusic}
+          autoPlay
+          loop
+          playsInline
+        />
+      )}
 
       {/* Main Profile Dialog Window */}
       <div
@@ -469,27 +520,31 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         {/* PROFILE DETAILS CONTAINER                         */}
         {/* ================================================== */}
         <div className="px-5 pt-0 pb-5 relative flex flex-col flex-1">
-          {/* Avatar Area: Shows custom PFP border in VIEW mode */}
+          {/* Avatar Area with Sharp Square Frame */}
           <div className="relative -mt-10 mb-3 flex items-end justify-between">
             <div className="relative group shrink-0">
-              {/* Avatar with PFP Border (NOT shown in editor mode to keep upload clean) */}
-              <AvatarWithBorder
-                src={activeProfile.profilePicture}
-                borderId={currentEquippedBorderId}
-                alt={activeProfile.username}
-                size="2xl"
-                shape="circle"
-                showBorder={editMode === 'view'}
-              />
+              {/* Square Avatar container */}
+              <div className="w-20 h-20 rounded-xs border-2 border-[#141519] bg-[#22242c] overflow-hidden flex items-center justify-center shadow-lg ring-1 ring-[#3a3b48]">
+                {activeProfile.profilePicture ? (
+                  <img
+                    src={activeProfile.profilePicture}
+                    alt={activeProfile.username}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-10 h-10 text-neutral-400" />
+                )}
+              </div>
 
-              {/* PFP Upload Controls in edit mode */}
+              {/* PFP Controls in edit mode */}
               {canEdit && editMode !== 'view' && (
-                <div className="absolute -bottom-1 -right-1 flex items-center gap-1 bg-[#141519]/90 p-0.5 rounded-full border border-[#343644] shadow-md z-20">
+                <div className="absolute -bottom-1 -right-1 flex items-center gap-1 bg-[#141519]/90 p-0.5 rounded-xs border border-[#343644] shadow-md z-10">
                   <button
                     type="button"
                     onClick={() => pfpInputRef.current?.click()}
                     title="Change profile picture"
-                    className="p-1 bg-[#252732] hover:bg-[#343646] text-neutral-200 hover:text-white rounded-full transition-colors cursor-pointer"
+                    className="p-1 bg-[#252732] hover:bg-[#343646] text-neutral-200 hover:text-white rounded-xs transition-colors cursor-pointer"
                   >
                     <Camera className="w-3 h-3" />
                   </button>
@@ -498,7 +553,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       type="button"
                       onClick={handleRemovePfp}
                       title="Remove profile picture"
-                      className="p-1 bg-[#252732] hover:bg-[#343646] text-neutral-200 hover:text-red-400 rounded-full transition-colors cursor-pointer"
+                      className="p-1 bg-[#252732] hover:bg-[#343646] text-neutral-200 hover:text-red-400 rounded-xs transition-colors cursor-pointer"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -543,10 +598,34 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
 
           {/* ================================================== */}
-          {/* A. NORMAL VIEW MODE (ONLY Info & About Me)         */}
+          {/* A. NORMAL VIEW MODE                                */}
           {/* ================================================== */}
           {editMode === 'view' && (
             <>
+              {/* Profile Music Player indicator if set */}
+              {activeProfile.profileMusic && (
+                <div className="flex items-center justify-between px-3 py-1.5 bg-[#1a1b22] border border-[#292a36] rounded-xs text-xs mb-3 text-neutral-200">
+                  <div className="flex items-center gap-2 truncate">
+                    <Music className="w-3.5 h-3.5 text-purple-400 shrink-0 animate-pulse" />
+                    <span className="font-semibold text-neutral-300 truncate">
+                      Profile Music
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleMusicPlay}
+                    className="p-1 hover:bg-[#252733] text-neutral-300 hover:text-white rounded-xs cursor-pointer transition-colors"
+                    title={isMusicPlaying ? 'Mute/Pause music' : 'Play profile music'}
+                  >
+                    {isMusicPlaying ? (
+                      <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <VolumeX className="w-3.5 h-3.5 text-neutral-500" />
+                    )}
+                  </button>
+                </div>
+              )}
+
               {/* Tabs: Info and optionally About me */}
               <div className="flex items-center border-b border-[#25262f] gap-1 mb-3.5">
                 <button
@@ -560,7 +639,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 >
                   Info
                 </button>
-
                 {hasBio && (
                   <button
                     type="button"
@@ -652,24 +730,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   </button>
                 )}
 
-                {/* Customisation option ONLY on own profile */}
-                {isOwner && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomiseView('single');
-                      setEditMode('edit_customisation');
-                    }}
-                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                      <span>Customisation</span>
-                    </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
-                  </button>
-                )}
-
                 <button
                   type="button"
                   onClick={() => setEditMode('edit_bio')}
@@ -687,207 +747,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   <span>Edit mood</span>
                   <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEditMode('edit_music')}
+                  className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                >
+                  <span>Profile Music</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                </button>
               </div>
             </div>
           )}
 
           {/* ================================================== */}
-          {/* C. CUSTOMISATION EDITOR (OWNER ONLY)               */}
-          {/* ================================================== */}
-          {editMode === 'edit_customisation' && isOwner && (
-            <div className="flex flex-col animate-in fade-in duration-150 text-left">
-              {customiseView === 'single' ? (
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-full flex items-center justify-between border-b border-[#25262f] pb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                      Customise Border
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setEditMode('edit_menu')}
-                      className="text-xs text-neutral-400 hover:text-neutral-200 cursor-pointer"
-                    >
-                      Done
-                    </button>
-                  </div>
-
-                  {/* Profile Card Preview in Middle */}
-                  <div className="w-full bg-[#181a22] border border-[#2a2c38] rounded-md p-3.5 flex items-center gap-3.5 shadow-lg relative overflow-hidden">
-                    {/* Avatar with Previewed Border */}
-                    <AvatarWithBorder
-                      src={activeProfile.profilePicture}
-                      borderId={currentPreviewBorder.id}
-                      alt={activeProfile.username}
-                      size="xl"
-                      shape="circle"
-                    />
-
-                    {/* Card Info */}
-                    <div className="flex flex-col min-w-0 flex-1">
-                      {rankConfig && (
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <img
-                            src={rankConfig.iconUrl}
-                            alt={rankConfig.name}
-                            className="w-3.5 h-3.5 object-contain"
-                          />
-                          <span className="text-[11px] font-bold text-white tracking-wide">
-                            {rankConfig.name}
-                          </span>
-                        </div>
-                      )}
-                      <span className="text-sm font-bold text-neutral-100 truncate">
-                        {activeProfile.username}
-                      </span>
-                      <span className="text-xs text-neutral-400 truncate">
-                        {activeProfile.mood ? `"${activeProfile.mood}"` : 'Chatting on chatlaxy'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Carousel Selector: < [Border Name] > */}
-                  <div className="w-full flex items-center justify-between bg-[#121318] border border-[#282a36] rounded-md p-1.5 mt-0.5">
-                    <button
-                      type="button"
-                      onClick={handlePrevBorder}
-                      aria-label="Previous border"
-                      className="p-2 hover:bg-[#20222e] text-neutral-400 hover:text-white rounded transition-colors cursor-pointer"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-
-                    <div className="flex flex-col items-center text-center px-2 min-w-0 flex-1">
-                      <span className="text-xs sm:text-sm font-bold text-neutral-100 truncate">
-                        {currentPreviewBorder.name}
-                      </span>
-                      <span className="text-[10px] text-neutral-400 font-mono">
-                        Row {currentPreviewBorder.row + 1} &bull; {selectedBorderIndex + 1}/{BORDERS.length}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleNextBorder}
-                      aria-label="Next border"
-                      className="p-2 hover:bg-[#20222e] text-neutral-400 hover:text-white rounded transition-colors cursor-pointer"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {/* < view grid > button */}
-                  <button
-                    type="button"
-                    onClick={() => setCustomiseView('grid')}
-                    className="text-xs text-purple-400 hover:text-purple-300 font-medium tracking-wide flex items-center gap-1.5 py-1 px-3 rounded hover:bg-purple-950/30 transition-colors cursor-pointer"
-                  >
-                    <LayoutGrid className="w-3.5 h-3.5" />
-                    <span>&lt; view grid &gt;</span>
-                  </button>
-
-                  {/* [select] Button */}
-                  <div className="w-full flex items-center gap-2 pt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectBorder(currentPreviewBorder.id)}
-                      className={`w-full py-2 px-4 rounded font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                        isSelectedBorderEquipped
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-zinc-200 hover:bg-white text-zinc-950 shadow-sm'
-                      }`}
-                    >
-                      {justEquipped ? (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Equipped!</span>
-                        </>
-                      ) : isSelectedBorderEquipped ? (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Equipped</span>
-                        </>
-                      ) : (
-                        <span>[ Select ]</span>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Option to clear border */}
-                  {currentEquippedBorderId && (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectBorder(null)}
-                      className="text-[11px] text-red-400 hover:text-red-300 underline cursor-pointer"
-                    >
-                      Remove Border
-                    </button>
-                  )}
-                </div>
-              ) : (
-                /* Grid View: 5 in each row */
-                <div className="flex flex-col gap-2">
-                  {/* Grid Header */}
-                  <div className="flex items-center justify-between pb-1.5 border-b border-[#25262f]">
-                    <span className="text-xs font-bold text-neutral-200">
-                      Profile Borders (5 in each row)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setCustomiseView('single')}
-                      className="text-xs text-purple-400 hover:text-purple-300 font-medium cursor-pointer"
-                    >
-                      &lt; Back to preview
-                    </button>
-                  </div>
-
-                  {/* 5-Column Grid */}
-                  <div className="grid grid-cols-5 gap-2 max-h-[260px] overflow-y-auto p-1 border border-[#23252f] rounded-md bg-[#101115]">
-                    {BORDERS.map((border) => {
-                      const isSelected = selectedBorderIndex === border.index;
-                      const isEquipped = currentEquippedBorderId === border.id;
-
-                      return (
-                        <button
-                          key={border.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedBorderIndex(border.index);
-                            setCustomiseView('single');
-                          }}
-                          title={border.name}
-                          className={`flex flex-col items-center p-1 rounded-sm border transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-purple-950/50 border-purple-500 ring-1 ring-purple-500'
-                              : isEquipped
-                              ? 'bg-[#1e202a] border-emerald-500/80'
-                              : 'bg-[#171820] border-[#2c2d38] hover:border-zinc-500'
-                          }`}
-                        >
-                          {/* Thumbnail preview */}
-                          <div className="w-10 h-10 relative flex items-center justify-center">
-                            <AvatarWithBorder
-                              src={activeProfile.profilePicture}
-                              borderId={border.id}
-                              size="sm"
-                              shape="circle"
-                            />
-                          </div>
-
-                          {/* Border Name */}
-                          <span className="text-[9px] text-neutral-300 font-medium text-center truncate w-full mt-1">
-                            {border.name}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ================================================== */}
-          {/* D. EDIT INFO FORM (OWNER ONLY)                     */}
+          {/* C. EDIT INFO FORM (OWNER ONLY)                     */}
           {/* ================================================== */}
           {editMode === 'edit_info' && isOwner && (
             <div className="flex flex-col gap-2.5 animate-in fade-in duration-100">
@@ -961,7 +835,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           )}
 
           {/* ================================================== */}
-          {/* E. EDIT BIO FORM                                   */}
+          {/* D. EDIT BIO FORM                                   */}
           {/* ================================================== */}
           {editMode === 'edit_bio' && (
             <div className="flex flex-col gap-2.5 animate-in fade-in duration-100">
@@ -1012,7 +886,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           )}
 
           {/* ================================================== */}
-          {/* F. EDIT MOOD FORM                                  */}
+          {/* E. EDIT MOOD FORM                                  */}
           {/* ================================================== */}
           {editMode === 'edit_mood' && (
             <div className="flex flex-col gap-2.5 animate-in fade-in duration-100">
@@ -1051,6 +925,105 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveMood}
+                  className="px-4 py-1.5 bg-zinc-200 hover:bg-white text-zinc-950 font-semibold rounded-xs text-xs flex items-center gap-1 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ================================================== */}
+          {/* F. EDIT MUSIC FORM                                 */}
+          {/* ================================================== */}
+          {editMode === 'edit_music' && (
+            <div className="flex flex-col gap-2.5 animate-in fade-in duration-100">
+              <div className="flex items-center justify-between border-b border-[#25262f] pb-2 mb-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  Profile Music
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEditMode('edit_menu')}
+                  className="text-xs text-neutral-400 hover:text-neutral-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {/* File upload section */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-neutral-400 font-medium">
+                    Upload MP3 File
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => musicFileInputRef.current?.click()}
+                      disabled={isUploadingMusic}
+                      className="px-3 py-2 bg-[#21232d] hover:bg-[#2a2c38] text-neutral-200 text-xs font-medium rounded-xs border border-[#323444] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isUploadingMusic ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400" />
+                      ) : (
+                        <Upload className="w-3.5 h-3.5 text-neutral-400" />
+                      )}
+                      <span>{editMusic ? 'Change MP3' : 'Upload MP3'}</span>
+                    </button>
+                    {editMusic && !isUploadingMusic && (
+                      <button
+                        type="button"
+                        onClick={() => setEditMusic('')}
+                        className="p-2 text-neutral-400 hover:text-red-400 hover:bg-[#282024] rounded-xs transition-colors cursor-pointer"
+                        title="Remove music"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Upload Progress Bar */}
+                {isUploadingMusic && (
+                  <div className="flex flex-col gap-1 my-1 p-2 bg-[#121317] border border-[#2b2d39] rounded-xs animate-in fade-in duration-100">
+                    <div className="flex items-center justify-between text-xs text-neutral-300 font-medium">
+                      <span>Uploading to Cloudinary...</span>
+                      <span className="font-mono text-purple-400 font-bold">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-[#20222c] border border-[#2e303c] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-150 rounded-full"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Music Preview Player if present */}
+                {editMusic && !isUploadingMusic && (
+                  <div className="mt-1 p-2 bg-[#101115] border border-[#2c2e37] rounded-xs flex flex-col gap-1">
+                    <span className="text-[11px] text-neutral-400 font-medium">
+                      Music Preview:
+                    </span>
+                    <audio src={editMusic} controls className="w-full h-8 max-w-full" />
+                  </div>
+                )}
+              </div>
+
+              {/* Buttons */}
+              <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-[#25262f]">
+                <button
+                  type="button"
+                  onClick={() => setEditMode('edit_menu')}
+                  className="px-3 py-1.5 bg-[#1e2027] hover:bg-[#282a34] text-neutral-300 rounded-xs text-xs font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveMusic}
                   className="px-4 py-1.5 bg-zinc-200 hover:bg-white text-zinc-950 font-semibold rounded-xs text-xs flex items-center gap-1 cursor-pointer"
                 >
                   <Check className="w-3.5 h-3.5" />

@@ -45,16 +45,10 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({
     if (file) {
       setIsUploadingAvatar(true);
       try {
-        const cloudUrl = await uploadImageToCloudinary(file);
+        const cloudUrl = await uploadImageToCloudinary(file, { isBanner: false });
         setProfilePicture(cloudUrl);
       } catch (err) {
         console.error('Failed to upload avatar to Cloudinary:', err);
-        // Fallback to local base64
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          setProfilePicture(event.target?.result as string);
-        };
-        reader.readAsDataURL(file);
       } finally {
         setIsUploadingAvatar(false);
       }
@@ -67,16 +61,10 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({
     if (file) {
       setIsUploadingBanner(true);
       try {
-        const cloudUrl = await uploadImageToCloudinary(file);
+        const cloudUrl = await uploadImageToCloudinary(file, { isBanner: true });
         setBanner(cloudUrl);
       } catch (err) {
         console.error('Failed to upload banner to Cloudinary:', err);
-        // Fallback to local base64
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          setBanner(event.target?.result as string);
-        };
-        reader.readAsDataURL(file);
       } finally {
         setIsUploadingBanner(false);
       }

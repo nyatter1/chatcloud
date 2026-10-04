@@ -60,8 +60,8 @@ export interface ProfileData {
   age?: string;
   gender?: string;
   rank?: RankId | null;
-  pfpBorder?: string | null;
   chatBackground?: string | null;
+  profileMusic?: string | null;
   wallet?: {
     ruby: number;
     gold: number;
