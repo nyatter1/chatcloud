@@ -42,7 +42,7 @@ app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    service: 'chatlaxy-api',
+    service: 'chatlaxy',
   });
 });
 
