@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import dbService from './services/db.js';
 
 dotenv.config();
@@ -41,7 +42,7 @@ app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    service: 'chatlaxy',
+    service: 'chatlaxy-api',
   });
 });
 
@@ -325,17 +326,42 @@ if (process.env.NODE_ENV !== 'production') {
   }
 } else {
   const distPath = path.join(__dirname, 'dist');
-  app.use(express.static(distPath));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path === '/health') {
-      return next();
-    }
-    res.sendFile(path.join(distPath, 'index.html'), (err) => {
-      if (err) {
-        res.status(404).send('Frontend build not found.');
+  if (fs.existsSync(distPath) && fs.existsSync(path.join(distPath, 'index.html'))) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path === '/health') {
+        return next();
       }
+      res.sendFile(path.join(distPath, 'index.html'));
     });
-  });
+  } else {
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path === '/health') {
+        return next();
+      }
+      res.status(200).send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Chatlaxy API Server</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0f111a; color: #a6accd; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+            h1 { color: #82aaff; margin-bottom: 8px; }
+            p { font-size: 14px; color: #8f93a2; }
+            .badge { background: #1e213a; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-family: monospace; color: #c3e88d; }
+          </style>
+        </head>
+        <body>
+          <h1>Chatlaxy API Backend</h1>
+          <p>The backend services are live and healthy.</p>
+          <div class="badge">Status: Online</div>
+        </body>
+        </html>
+      `);
+    });
+  }
 }
 
 app.listen(PORT, '0.0.0.0', () => {
