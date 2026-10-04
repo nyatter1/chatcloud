@@ -503,27 +503,8 @@ if (process.env.NODE_ENV !== 'production') {
       if (req.path.startsWith('/api') || req.path === '/health') {
         return next();
       }
-      res.status(200).send(`
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Chatlaxy API Server</title>
-          <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0f111a; color: #a6accd; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-            h1 { color: #82aaff; margin-bottom: 8px; }
-            p { font-size: 14px; color: #8f93a2; }
-            .badge { background: #1e213a; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-family: monospace; color: #c3e88d; }
-          </style>
-        </head>
-        <body>
-          <h1>Chatlaxy API Backend</h1>
-          <p>The backend services are live and healthy.</p>
-          <div class="badge">Status: Online</div>
-        </body>
-        </html>
-      `);
+      const targetUrl = process.env.FRONTEND_URL || 'https://chatlaxy-site.onrender.com';
+      res.redirect(targetUrl);
     });
   }
 }
