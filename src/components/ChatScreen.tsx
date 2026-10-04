@@ -91,9 +91,16 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   useEffect(() => {
     const unsubscribe = subscribeToUsers((usersMap) => {
       setAllUsers(usersMap);
+      if (currentUser.username) {
+        const myKey = currentUser.username.toLowerCase().trim();
+        const myUpdated = usersMap[myKey];
+        if (myUpdated) {
+          onUpdateCurrentUser(myUpdated);
+        }
+      }
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser.username, onUpdateCurrentUser]);
 
   // 3. Subscribe to Live Firestore News Announcements
   useEffect(() => {
@@ -862,6 +869,16 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         currentUser={currentUser}
         onClose={() => setIsAvatarFramesOpen(false)}
         onSelectFrame={handleSelectAvatarFrame}
+      />
+
+      {/* User Profile Modal (Live Viewing & Editing) */}
+      <ProfileModal
+        isOpen={activeProfileTarget !== null}
+        targetUserId={activeProfileTarget}
+        currentUser={currentUser}
+        allUsers={allUsers}
+        onClose={() => setActiveProfileTarget(null)}
+        onUpdateCurrentUser={onUpdateCurrentUser}
       />
     </div>
   );

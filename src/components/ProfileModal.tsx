@@ -110,19 +110,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       return;
     }
 
-    if (
-      targetUserId === 'current_user' ||
-      targetUserId.toLowerCase().trim() === currentUser.username.toLowerCase().trim()
-    ) {
-      setActiveProfile(currentUser);
-      return;
-    }
+    const cleanTarget = (
+      targetUserId === 'current_user' ? currentUser.username : targetUserId
+    ).toLowerCase().trim();
 
     // Check in-memory real-time users first
-    const cleanTarget = targetUserId.toLowerCase().trim();
     const liveMatch = allUsers[cleanTarget];
     if (liveMatch) {
       setActiveProfile(liveMatch);
+    } else if (
+      targetUserId === 'current_user' ||
+      cleanTarget === currentUser.username.toLowerCase().trim()
+    ) {
+      setActiveProfile(currentUser);
     } else {
       // Set initial placeholder while fetching from Firestore
       setActiveProfile({
@@ -135,17 +135,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       });
     }
 
-    // Fetch latest directly from Firestore
-    getUserFromFirestore(targetUserId)
+    // Fetch latest directly from Firestore to ensure real-time accuracy for likes, bio, etc.
+    getUserFromFirestore(cleanTarget)
       .then((doc) => {
         if (doc) {
           setActiveProfile(doc);
+          if (cleanTarget === currentUser.username.toLowerCase().trim()) {
+            onUpdateCurrentUser(doc);
+          }
         }
       })
       .catch((err) => {
         console.error('Error loading user profile from Firestore:', err);
       });
-  }, [targetUserId, currentUser, allUsers, isOpen]);
+  }, [targetUserId, currentUser, allUsers, isOpen, onUpdateCurrentUser]);
 
   // Sync edit form fields whenever activeProfile changes
   useEffect(() => {
