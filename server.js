@@ -490,23 +490,17 @@ if (process.env.NODE_ENV !== 'production') {
   }
 } else {
   const distPath = path.join(__dirname, 'dist');
-  if (fs.existsSync(distPath) && fs.existsSync(path.join(distPath, 'index.html'))) {
-    app.use(express.static(distPath));
-    app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api') || req.path === '/health') {
-        return next();
+  app.use(express.static(distPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path === '/health') {
+      return next();
+    }
+    res.sendFile(path.join(distPath, 'index.html'), (err) => {
+      if (err) {
+        res.status(500).send('Chatlaxy is loading or the frontend build is missing. Please run "npm run build" to compile the static files.');
       }
-      res.sendFile(path.join(distPath, 'index.html'));
     });
-  } else {
-    app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api') || req.path === '/health') {
-        return next();
-      }
-      const targetUrl = process.env.FRONTEND_URL || 'https://chatlaxy-site.onrender.com';
-      res.redirect(targetUrl);
-    });
-  }
+  });
 }
 
 app.listen(PORT, '0.0.0.0', () => {
