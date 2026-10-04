@@ -24,6 +24,8 @@ import { isFounderOrAbove } from '../utils/permissions';
 import { addAuditLog } from '../utils/auditLogger';
 import { uploadImageToCloudinary, uploadAudioToCloudinary } from '../utils/cloudinary';
 import { saveUserToFirestore, getUserFromFirestore } from '../services/firestoreService';
+import { ProfileEffectCanvas } from './ProfileEffectCanvas';
+import { ProfileEffectsModal } from './ProfileEffectsModal';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -66,6 +68,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [isUploadingMusic, setIsUploadingMusic] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
+  const [isProfileEffectsOpen, setIsProfileEffectsOpen] = useState(false);
 
   const pfpInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -384,6 +387,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
+  // Save Profile Effect
+  const handleSaveProfileEffect = (effectId: string | null) => {
+    const updated = {
+      ...activeProfile,
+      profileEffect: effectId,
+    };
+    saveProfileData(updated, `profile effect to "${effectId || 'none'}"`);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
       {/* Click backdrop to close */}
@@ -431,7 +443,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         {/* ================================================== */}
         {/* BANNER SECTION                                     */}
         {/* ================================================== */}
-        <div className="h-28 sm:h-32 w-full bg-[#1b1c23] relative overflow-hidden border-b border-[#25262f]">
+        <div className="h-28 sm:h-32 w-full bg-[#1b1c23] relative z-0 overflow-hidden border-b border-[#25262f] shrink-0">
           {activeProfile.banner ? (
             <img
               src={activeProfile.banner}
@@ -519,9 +531,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         {/* ================================================== */}
         {/* PROFILE DETAILS CONTAINER                         */}
         {/* ================================================== */}
-        <div className="px-5 pt-0 pb-5 relative flex flex-col flex-1">
+        <div className="px-5 pt-0 pb-5 relative z-10 flex flex-col flex-1">
+          {/* Animated Profile Effect (Clipped inside lower section, behind content) */}
+          {activeProfile.profileEffect && activeProfile.profileEffect !== 'none' && (
+            <div className="absolute inset-0 pointer-events-none -z-10 overflow-hidden rounded-b-xs">
+              <ProfileEffectCanvas effectId={activeProfile.profileEffect} />
+              {/* Subtle dark overlay for 100% text readability */}
+              <div className="absolute inset-0 bg-[#141519]/70 pointer-events-none" />
+            </div>
+          )}
+
           {/* Avatar Area with Sharp Square Frame */}
-          <div className="relative -mt-10 mb-3 flex items-end justify-between">
+          <div className="relative z-20 -mt-10 mb-3 flex items-end justify-between">
             <div className="relative group shrink-0">
               {/* Square Avatar container */}
               <div className="w-20 h-20 rounded-xs border-2 border-[#141519] bg-[#22242c] overflow-hidden flex items-center justify-center shadow-lg ring-1 ring-[#3a3b48]">
@@ -754,6 +775,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
                 >
                   <span>Profile Music</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsProfileEffectsOpen(true)}
+                  className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                >
+                  <span>Profile Effects</span>
                   <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
                 </button>
               </div>
@@ -1033,6 +1063,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Profile Effects Modal */}
+        {isProfileEffectsOpen && (
+          <ProfileEffectsModal
+            isOpen={isProfileEffectsOpen}
+            currentUser={currentUser}
+            onClose={() => setIsProfileEffectsOpen(false)}
+            onSaveEffect={handleSaveProfileEffect}
+          />
+        )}
       </div>
     </div>
   );

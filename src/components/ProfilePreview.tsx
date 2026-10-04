@@ -32,7 +32,7 @@ export const ProfilePreview: React.FC<ProfilePreviewProps> = ({
       </div>
 
       {/* Banner */}
-      <div className="relative w-full h-32 sm:h-36 bg-[#1f2026] overflow-hidden flex items-center justify-center border-b border-[#24252c]">
+      <div className="relative z-0 w-full h-32 sm:h-36 bg-[#1f2026] overflow-hidden flex items-center justify-center border-b border-[#24252c] shrink-0">
         {banner ? (
           <img
             src={banner}
@@ -47,9 +47,9 @@ export const ProfilePreview: React.FC<ProfilePreviewProps> = ({
       </div>
 
       {/* Profile Info Container */}
-      <div className="px-5 pb-6 pt-0 relative flex flex-col">
+      <div className="px-5 pb-6 pt-0 relative z-10 flex flex-col">
         {/* Avatar positioned over banner */}
-        <div className="relative -mt-10 sm:-mt-12 mb-3 flex items-end justify-between">
+        <div className="relative z-20 -mt-10 sm:-mt-12 mb-3 flex items-end justify-between">
           <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-full border-4 border-[#18191d] bg-[#22242c] overflow-hidden flex items-center justify-center shadow-lg">
             {profilePicture ? (
               <img

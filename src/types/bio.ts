@@ -62,6 +62,7 @@ export interface ProfileData {
   rank?: RankId | null;
   chatBackground?: string | null;
   profileMusic?: string | null;
+  profileEffect?: string | null;
   wallet?: {
     ruby: number;
     gold: number;
