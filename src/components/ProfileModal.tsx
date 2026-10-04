@@ -989,7 +989,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 {isUploadingMusic && (
                   <div className="flex flex-col gap-1 my-1 p-2 bg-[#121317] border border-[#2b2d39] rounded-xs animate-in fade-in duration-100">
                     <div className="flex items-center justify-between text-xs text-neutral-300 font-medium">
-                      <span>Uploading to Cloudinary...</span>
+                      <span>Uploading...</span>
                       <span className="font-mono text-purple-400 font-bold">{uploadProgress}%</span>
                     </div>
                     <div className="w-full h-2 bg-[#20222c] border border-[#2e303c] rounded-full overflow-hidden">
