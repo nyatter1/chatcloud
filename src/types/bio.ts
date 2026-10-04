@@ -78,6 +78,8 @@ export interface ProfileData {
   avatarFrame?: string | null;
   usernameStyle?: TextStyleConfig | null;
   chatTextStyle?: TextStyleConfig | null;
+  likesCount?: number;
+  likedBy?: string[];
   dailyMessagesDate?: string;
   dailyMessagesCount?: number;
   claimedDailyMilestones?: number[];

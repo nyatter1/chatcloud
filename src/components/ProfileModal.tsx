@@ -15,6 +15,7 @@ import {
   Play,
   Pause,
   Trash2,
+  Heart,
 } from 'lucide-react';
 import { ProfileData } from '../types/bio';
 import { SYSTEM_BOT } from '../constants/systemBot';
@@ -23,7 +24,12 @@ import { RankId } from '../types/ranks';
 import { isFounderOrAbove } from '../utils/permissions';
 import { addAuditLog } from '../utils/auditLogger';
 import { uploadImageToCloudinary, uploadAudioToCloudinary } from '../utils/cloudinary';
-import { saveUserToFirestore, getUserFromFirestore } from '../services/firestoreService';
+import {
+  saveUserToFirestore,
+  getUserFromFirestore,
+  sendNotificationToFirestore,
+} from '../services/firestoreService';
+import { AppNotification } from '../types/notifications';
 import { ProfileEffectCanvas } from './ProfileEffectCanvas';
 import { ProfileEffectsModal } from './ProfileEffectsModal';
 import { ProfileBordersModal } from './ProfileBordersModal';
@@ -184,6 +190,42 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setActiveTab('info');
   }, [targetUserId, isOpen]);
 
+  // Track profile view notification ("username is stalking you.")
+  useEffect(() => {
+    if (!isOpen || !targetUserId || !activeProfile.username || !currentUser.username) {
+      return;
+    }
+    const isOwnerUser =
+      targetUserId === 'current_user' ||
+      targetUserId.toLowerCase().trim() === currentUser.username.toLowerCase().trim();
+    const isBot = targetUserId === 'system';
+
+    if (isOwnerUser || isBot) return;
+
+    const sessionKey = `viewed_${currentUser.username}_${activeProfile.username}`;
+    const lastViewed = sessionStorage.getItem(sessionKey);
+    const now = Date.now();
+    // Only send notification once every 10 minutes per viewed user
+    if (!lastViewed || now - parseInt(lastViewed, 10) > 10 * 60 * 1000) {
+      sessionStorage.setItem(sessionKey, now.toString());
+      const notif: AppNotification = {
+        id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        recipientUsername: activeProfile.username,
+        senderUsername: currentUser.username,
+        senderAvatar: currentUser.profilePicture || null,
+        senderAvatarFrame: currentUser.avatarFrame || currentUser.effects?.pfpBorder || null,
+        senderUsernameStyle: currentUser.usernameStyle || null,
+        type: 'profile_view',
+        text: 'is stalking you.',
+        timestamp: Date.now(),
+        read: false,
+      };
+      sendNotificationToFirestore(notif).catch((err) => {
+        console.warn('Error sending stalking notification:', err);
+      });
+    }
+  }, [isOpen, targetUserId, activeProfile.username, currentUser]);
+
   if (!isOpen || !targetUserId) return null;
 
   const isOwner =
@@ -204,6 +246,59 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const plainBioText =
     activeProfile.bioSegments?.map((s) => s.text).join('\n') || '';
   const hasBio = Boolean(plainBioText.trim());
+
+  // Handle Like / Dislike Profile
+  const isLikedByMe = Boolean(
+    activeProfile.likedBy?.some(
+      (u) => u.toLowerCase() === currentUser.username.toLowerCase()
+    )
+  );
+
+  const handleToggleLike = async () => {
+    if (isOwner || isSystemBot) return;
+
+    const currentLikedBy = activeProfile.likedBy || [];
+    const myName = currentUser.username.toLowerCase();
+    const alreadyLiked = currentLikedBy.some((u) => u.toLowerCase() === myName);
+
+    let nextLikedBy: string[];
+    let nextLikesCount: number;
+
+    if (alreadyLiked) {
+      // Dislike / Unlike
+      nextLikedBy = currentLikedBy.filter((u) => u.toLowerCase() !== myName);
+      nextLikesCount = Math.max(0, (activeProfile.likesCount || currentLikedBy.length) - 1);
+    } else {
+      // Like
+      nextLikedBy = [...currentLikedBy, currentUser.username];
+      nextLikesCount = (activeProfile.likesCount || currentLikedBy.length) + 1;
+
+      // Send notification: "Username liked your profile!"
+      const notif: AppNotification = {
+        id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        recipientUsername: activeProfile.username,
+        senderUsername: currentUser.username,
+        senderAvatar: currentUser.profilePicture || null,
+        senderAvatarFrame: currentUser.avatarFrame || currentUser.effects?.pfpBorder || null,
+        senderUsernameStyle: currentUser.usernameStyle || null,
+        type: 'profile_like',
+        text: 'liked your profile!',
+        timestamp: Date.now(),
+        read: false,
+      };
+      sendNotificationToFirestore(notif).catch((err) => {
+        console.warn('Error sending like notification:', err);
+      });
+    }
+
+    const updated: ProfileData = {
+      ...activeProfile,
+      likedBy: nextLikedBy,
+      likesCount: nextLikesCount,
+    };
+
+    saveProfileData(updated, alreadyLiked ? 'unliked profile' : 'liked profile');
+  };
 
   // Helper to persist updates to activeProfile (and currentUser if owner)
   const saveProfileData = async (updated: ProfileData, fieldDescription?: string) => {
@@ -508,28 +603,61 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           )}
 
-          {/* Banner Controls (Camera & X in EDIT mode) */}
-          {canEdit && editMode !== 'view' && (
+          {/* Banner Controls: Like button (VIEW mode) or Camera & X (EDIT mode) */}
+          {editMode === 'view' ? (
             <div className="absolute top-2.5 left-2.5 z-30 flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => bannerInputRef.current?.click()}
-                title="Change banner"
-                className="p-1.5 bg-black/60 hover:bg-black/85 text-neutral-200 hover:text-white rounded-xs border border-white/10 transition-colors shadow-sm cursor-pointer"
+                onClick={handleToggleLike}
+                disabled={isOwner || isSystemBot}
+                title={
+                  isOwner
+                    ? 'You cannot like your own profile'
+                    : isLikedByMe
+                    ? 'Unlike profile'
+                    : 'Like profile'
+                }
+                className={`px-2.5 py-1 rounded-xs flex items-center gap-1.5 text-xs font-semibold backdrop-blur-md transition-all shadow-md ${
+                  isLikedByMe
+                    ? 'bg-rose-600/90 hover:bg-rose-600 text-white border border-rose-400/40 shadow-rose-900/50'
+                    : 'bg-black/60 hover:bg-black/85 text-neutral-200 border border-white/10 hover:border-white/20'
+                } ${isOwner || isSystemBot ? 'cursor-default opacity-85' : 'cursor-pointer active:scale-95'}`}
               >
-                <Camera className="w-3.5 h-3.5" />
+                <Heart
+                  className={`w-3.5 h-3.5 transition-transform ${
+                    isLikedByMe
+                      ? 'fill-current text-white scale-110'
+                      : 'text-rose-400 fill-rose-500/20'
+                  }`}
+                />
+                <span className="font-mono text-xs">
+                  {activeProfile.likesCount ?? (activeProfile.likedBy?.length || 0)}
+                </span>
               </button>
-              {activeProfile.banner && (
+            </div>
+          ) : (
+            canEdit && (
+              <div className="absolute top-2.5 left-2.5 z-30 flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={handleRemoveBanner}
-                  title="Remove banner"
-                  className="p-1.5 bg-black/60 hover:bg-black/85 text-neutral-200 hover:text-red-400 rounded-xs border border-white/10 transition-colors shadow-sm cursor-pointer"
+                  onClick={() => bannerInputRef.current?.click()}
+                  title="Change banner"
+                  className="p-1.5 bg-black/60 hover:bg-black/85 text-neutral-200 hover:text-white rounded-xs border border-white/10 transition-colors shadow-sm cursor-pointer"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <Camera className="w-3.5 h-3.5" />
                 </button>
-              )}
-            </div>
+                {activeProfile.banner && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveBanner}
+                    title="Remove banner"
+                    className="p-1.5 bg-black/60 hover:bg-black/85 text-neutral-200 hover:text-red-400 rounded-xs border border-white/10 transition-colors shadow-sm cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )
           )}
 
           {/* Top-Right Control Buttons */}

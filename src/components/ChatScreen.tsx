@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, X, User, Sparkles, AlertCircle, Info, Menu } from 'lucide-react';
+import { Send, X, User, Sparkles, AlertCircle, Info, Menu, Bell } from 'lucide-react';
 import { ChatMessage, ReplyContext } from '../types/chat';
 import { ProfileData } from '../types/bio';
 import { ChatMessageItem } from './ChatMessageItem';
@@ -14,6 +14,8 @@ import { UserAvatar } from './UserAvatar';
 import { NewsPanel } from './NewsPanel';
 import { NewsComposer } from './NewsComposer';
 import { ChatlaxyLogo } from './ChatlaxyLogo';
+import { NotificationsDropdown } from './NotificationsDropdown';
+import { AppNotification } from '../types/notifications';
 import { NewsPost, NewsReactionType } from '../types/news';
 import { handleChatCommand } from '../utils/commandHandler';
 import { isFounderOrAbove } from '../utils/permissions';
@@ -29,6 +31,9 @@ import {
   createNewsPostInFirestore,
   deleteNewsPostFromFirestore,
   updateNewsPostInFirestore,
+  subscribeToUserNotifications,
+  deleteNotificationFromFirestore,
+  clearAllNotificationsForUser,
 } from '../services/firestoreService';
 
 interface ChatScreenProps {
@@ -59,6 +64,9 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const [newsPosts, setNewsPosts] = useState<NewsPost[]>([]);
   const [isComposerModalOpen, setIsComposerModalOpen] = useState(false);
   const [activeProfileTarget, setActiveProfileTarget] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
   const [isChatBgModalOpen, setIsChatBgModalOpen] = useState(false);
   const [previewChatBackground, setPreviewChatBackground] = useState<string | null>(
     currentUser.chatBackground || null
@@ -103,6 +111,63 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     });
     return () => unsubscribe();
   }, [isNewsOpen]);
+
+  // 4. Subscribe to Live User Notifications
+  useEffect(() => {
+    if (!currentUser.username) return;
+    const lastReadNotif = Number(
+      localStorage.getItem(`chatlaxy_last_read_notif_${currentUser.username.toLowerCase()}`) || '0'
+    );
+
+    const unsubscribe = subscribeToUserNotifications(currentUser.username, (notifs) => {
+      setNotifications(notifs);
+      if (notifs.length > 0) {
+        const latestTs = Math.max(...notifs.map((n) => n.timestamp));
+        if (latestTs > lastReadNotif && !isNotificationsOpen) {
+          setHasUnreadNotifications(true);
+        }
+      } else {
+        setHasUnreadNotifications(false);
+      }
+    });
+    return () => unsubscribe();
+  }, [currentUser.username, isNotificationsOpen]);
+
+  // Open & Mark Notifications Read
+  const handleToggleNotifications = () => {
+    setIsNotificationsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setHasUnreadNotifications(false);
+        localStorage.setItem(
+          `chatlaxy_last_read_notif_${currentUser.username.toLowerCase()}`,
+          Date.now().toString()
+        );
+      }
+      return next;
+    });
+  };
+
+  // Clear all notifications for current user
+  const handleClearAllNotifications = async () => {
+    try {
+      await clearAllNotificationsForUser(currentUser.username);
+      setNotifications([]);
+      setHasUnreadNotifications(false);
+    } catch (err) {
+      console.error('Error clearing notifications:', err);
+    }
+  };
+
+  // Delete single notification
+  const handleDeleteNotification = async (id: string) => {
+    try {
+      await deleteNotificationFromFirestore(id);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    } catch (err) {
+      console.error('Error deleting notification:', err);
+    }
+  };
 
   // 4. Auto-sync missing user profile pictures and banners from chat messages & active session into Firestore
   useEffect(() => {
@@ -496,8 +561,22 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           <ChatlaxyLogo size="md" />
         </div>
 
-        {/* Top Right: ONLY the user's profile picture with active Avatar Frame */}
-        <div className="flex items-center">
+        {/* Top Right: Bell Notifications Button + User's Profile Picture */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Bell Notifications Button */}
+          <button
+            type="button"
+            onClick={handleToggleNotifications}
+            aria-label="Open notifications"
+            className="relative p-2 text-neutral-300 hover:text-white hover:bg-[#20222c] rounded-full transition-colors cursor-pointer"
+          >
+            <Bell className="w-5 h-5 sm:w-5.5 sm:h-5.5 fill-current/10" />
+            {hasUnreadNotifications && (
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-[#16171b] animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.9)]" />
+            )}
+          </button>
+
+          {/* User's profile picture with active Avatar Frame */}
           <button
             type="button"
             onClick={() => setIsProfileMenuOpen((prev) => !prev)}
@@ -513,6 +592,16 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
             />
           </button>
         </div>
+
+        {/* Notifications Dropdown */}
+        <NotificationsDropdown
+          isOpen={isNotificationsOpen}
+          notifications={notifications}
+          onClose={() => setIsNotificationsOpen(false)}
+          onClearAll={handleClearAllNotifications}
+          onDeleteNotification={handleDeleteNotification}
+          onOpenProfile={(username) => setActiveProfileTarget(username)}
+        />
 
         {/* Profile Menu Dropdown (Includes Chat background & functional Wallet & Admin panel) */}
         <ProfileMenuDropdown

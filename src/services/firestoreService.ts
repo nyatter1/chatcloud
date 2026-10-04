@@ -15,6 +15,7 @@ import { ProfileData } from '../types/bio';
 import { ChatMessage } from '../types/chat';
 import { AuditLogEntry } from '../utils/auditLogger';
 import { NewsPost } from '../types/news';
+import { AppNotification } from '../types/notifications';
 
 // ----------------------------------------------------
 // HELPER: Remove undefined properties recursively for Firestore
@@ -258,3 +259,65 @@ export async function updateNewsPostInFirestore(post: NewsPost): Promise<void> {
   const ref = doc(db, NEWS_COLLECTION, post.id);
   await setDoc(ref, post, { merge: true });
 }
+
+// ----------------------------------------------------
+// 6. NOTIFICATIONS COLLECTION
+// ----------------------------------------------------
+const NOTIFICATIONS_COLLECTION = 'notifications';
+
+export async function sendNotificationToFirestore(notification: AppNotification): Promise<void> {
+  const ref = doc(db, NOTIFICATIONS_COLLECTION, notification.id);
+  const cleaned = cleanForFirestore(notification);
+  await setDoc(ref, cleaned);
+}
+
+export function subscribeToUserNotifications(
+  username: string,
+  callback: (notifications: AppNotification[]) => void
+) {
+  const cleanName = username.trim().toLowerCase();
+  const q = query(
+    collection(db, NOTIFICATIONS_COLLECTION),
+    orderBy('timestamp', 'desc'),
+    limit(100)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: AppNotification[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as AppNotification;
+        const target = (data.recipientUsername || '').toLowerCase();
+        if (target === cleanName || target === 'all') {
+          list.push({ ...data, id: docSnap.id });
+        }
+      });
+      callback(list);
+    },
+    (error) => {
+      console.error('Firestore notifications subscription error:', error);
+    }
+  );
+}
+
+export async function deleteNotificationFromFirestore(notificationId: string): Promise<void> {
+  const ref = doc(db, NOTIFICATIONS_COLLECTION, notificationId);
+  await deleteDoc(ref);
+}
+
+export async function clearAllNotificationsForUser(username: string): Promise<void> {
+  const cleanName = username.trim().toLowerCase();
+  const q = query(collection(db, NOTIFICATIONS_COLLECTION));
+  const snap = await getDocs(q);
+  const deletePromises: Promise<void>[] = [];
+  snap.forEach((docSnap) => {
+    const data = docSnap.data() as AppNotification;
+    const target = (data.recipientUsername || '').toLowerCase();
+    if (target === cleanName || target === 'all') {
+      deletePromises.push(deleteDoc(docSnap.ref));
+    }
+  });
+  await Promise.all(deletePromises);
+}
+

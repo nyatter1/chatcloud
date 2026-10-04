@@ -15,6 +15,9 @@ import {
   X,
   RefreshCw,
   User as UserIcon,
+  Bell,
+  Send,
+  ExternalLink,
 } from 'lucide-react';
 import { ProfileData } from '../types/bio';
 import { RankId } from '../types/ranks';
@@ -28,7 +31,9 @@ import {
   deleteUserFromFirestore,
   clearAuditLogsInFirestore,
   getAllUsersFromFirestore,
+  sendNotificationToFirestore,
 } from '../services/firestoreService';
+import { AppNotification } from '../types/notifications';
 
 interface AdminPanelProps {
   currentUser: ProfileData;
@@ -37,7 +42,7 @@ interface AdminPanelProps {
   onUpdateCurrentUser: (profile: ProfileData) => void;
 }
 
-type AdminTab = 'dashboard' | 'members' | 'console' | 'action' | 'addons';
+type AdminTab = 'dashboard' | 'members' | 'notifications' | 'console' | 'action' | 'addons';
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   currentUser,
@@ -56,6 +61,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [currencyModalUser, setCurrencyModalUser] = useState<string | null>(null);
   const [giveCurrencyType, setGiveCurrencyType] = useState<'gold' | 'ruby'>('gold');
   const [giveAmount, setGiveAmount] = useState<string>('500');
+
+  // Custom Notification state
+  const [notifTarget, setNotifTarget] = useState<string>('all');
+  const [notifMessage, setNotifMessage] = useState<string>('');
+  const [notifSending, setNotifSending] = useState<boolean>(false);
+  const [notifSuccess, setNotifSuccess] = useState<string | null>(null);
+
+  const handleSendNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = notifMessage.trim();
+    if (!trimmed) return;
+
+    setNotifSending(true);
+    setNotifSuccess(null);
+
+    try {
+      const newNotif: AppNotification = {
+        id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        recipientUsername: notifTarget,
+        senderUsername: currentUser.username,
+        senderAvatar: currentUser.profilePicture || null,
+        senderAvatarFrame: currentUser.avatarFrame || currentUser.effects?.pfpBorder || null,
+        senderUsernameStyle: currentUser.usernameStyle || null,
+        type: 'custom',
+        text: trimmed,
+        timestamp: Date.now(),
+        read: false,
+      };
+
+      await sendNotificationToFirestore(newNotif);
+
+      addAuditLog(
+        currentUser.username,
+        'Sent Custom Notification',
+        `Sent to ${notifTarget}: "${trimmed.slice(0, 30)}..."`,
+        'admin'
+      );
+
+      setNotifMessage('');
+      setNotifSuccess(
+        notifTarget === 'all'
+          ? 'Notification broadcasted to all users successfully!'
+          : `Notification delivered to ${notifTarget} successfully!`
+      );
+
+      setTimeout(() => setNotifSuccess(null), 5000);
+    } catch (err) {
+      console.error('Error sending notification from admin panel:', err);
+    } finally {
+      setNotifSending(false);
+    }
+  };
 
   // Refresh data from cloud
   const refreshData = async () => {
@@ -243,58 +300,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   });
 
   return (
-    <div className="flex flex-col md:flex-row h-screen h-[100dvh] w-full bg-[#0f1013] text-neutral-100 select-none overflow-hidden font-sans">
-      {/* Mobile Top Header + Tabs (visible on mobile only) */}
-      <header className="md:hidden bg-[#141518] border-b border-[#24252c] flex flex-col shrink-0 z-20">
-        <div className="px-3.5 py-2.5 flex items-center justify-between border-b border-[#20222a]">
-          <button
-            type="button"
-            onClick={onBackToChat}
-            className="p-1.5 bg-[#1e2026] text-neutral-300 rounded flex items-center gap-1 text-xs cursor-pointer"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span>Chat</span>
-          </button>
-          <span className="text-xs font-bold text-neutral-100 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Admin Panel
-          </span>
-          <span className="text-[10px] text-neutral-500 font-mono">v1.0</span>
-        </div>
-        {/* Horizontal scrollable tab chips */}
-        <div className="flex items-center gap-1 overflow-x-auto px-2 py-1.5">
-          {[
-            { id: 'dashboard' as AdminTab, label: 'Dashboard', icon: LayoutDashboard },
-            { id: 'members' as AdminTab, label: `Members (${totalUsers})`, icon: Users },
-            { id: 'console' as AdminTab, label: `Console (${logs.length})`, icon: Terminal },
-            { id: 'action' as AdminTab, label: 'Action', icon: Zap },
-            { id: 'addons' as AdminTab, label: 'Addons', icon: Puzzle },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap cursor-pointer transition-colors shrink-0 ${
-                  isActive
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'bg-[#1b1d24] text-neutral-400 hover:text-neutral-200'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </header>
-
+    <div className="flex h-screen w-full bg-[#0f1013] text-neutral-100 select-none overflow-hidden font-sans">
       {/* ================================================== */}
-      {/* 1. LEFT SIDEBAR (Desktop)                          */}
+      {/* 1. LEFT SIDEBAR                                    */}
       {/* ================================================== */}
-      <aside className="hidden md:flex w-60 sm:w-64 bg-[#141518] border-r border-[#24252c] flex-col shrink-0">
+      <aside className="w-60 sm:w-64 bg-[#141518] border-r border-[#24252c] flex flex-col shrink-0">
         {/* Top Header / Back button */}
         <div className="p-4 border-b border-[#24252c] flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -357,6 +367,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <span className="px-1.5 py-0.5 bg-[#1b1d24] text-[10px] text-neutral-400 rounded-sm font-mono">
               {totalUsers}
             </span>
+          </button>
+
+          {/* Custom Notifications */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('notifications')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-xs font-medium transition-colors cursor-pointer text-left ${
+              activeTab === 'notifications'
+                ? 'bg-[#22242c] text-white border-l-2 border-purple-500'
+                : 'text-neutral-400 hover:bg-[#191a20] hover:text-neutral-200'
+            }`}
+          >
+            <Bell className="w-4 h-4 text-neutral-400" />
+            <span>Send Notifications</span>
           </button>
 
           {/* System Console / Logs */}
@@ -766,6 +790,111 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </table>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* TAB: SEND CUSTOM NOTIFICATIONS */}
+          {activeTab === 'notifications' && (
+            <div className="space-y-6 animate-in fade-in duration-150 text-left max-w-3xl">
+              <div>
+                <h2 className="text-base font-bold text-neutral-100 flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-purple-400" />
+                  <span>Send Custom Notifications</span>
+                </h2>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Deliver instant real-time alerts with your avatar to a specific user or broadcast to all members. Any URLs included in the message automatically become clickable links!
+                </p>
+              </div>
+
+              {notifSuccess && (
+                <div className="p-3 bg-emerald-950/70 border border-emerald-500/40 rounded-md text-emerald-200 text-xs flex items-center gap-2 animate-in fade-in duration-150">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{notifSuccess}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSendNotification} className="bg-[#17181f] border border-[#262833] rounded-md p-5 space-y-4">
+                {/* Target Recipient */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-neutral-300">
+                    Target Recipient
+                  </label>
+                  <select
+                    value={notifTarget}
+                    onChange={(e) => setNotifTarget(e.target.value)}
+                    className="w-full bg-[#111215] border border-[#2b2d39] text-neutral-200 text-xs rounded-md px-3.5 py-2.5 outline-none focus:border-purple-500 cursor-pointer"
+                  >
+                    <option value="all">📢 Broadcast to All Members (@everyone)</option>
+                    <optgroup label="Specific Users">
+                      {usersList.map((u) => (
+                        <option key={u.username} value={u.username}>
+                          @{u.username} {u.rank ? `(${u.rank})` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+
+                {/* Message Content */}
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-neutral-300">
+                      Notification Message
+                    </label>
+                    <span className="text-[11px] text-neutral-500">
+                      Links (http/https) will turn into hyperlinks
+                    </span>
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={notifMessage}
+                    onChange={(e) => setNotifMessage(e.target.value)}
+                    placeholder="Enter custom announcement or alert... e.g. Check out the new updates at https://chatlaxy.app!"
+                    maxLength={300}
+                    className="w-full bg-[#111215] border border-[#2b2d39] text-neutral-200 text-xs rounded-md p-3 outline-none focus:border-purple-500 placeholder-neutral-500 resize-none"
+                  />
+                  <div className="flex justify-between items-center text-[11px] text-neutral-500">
+                    <span>Sender: <strong>@{currentUser.username}</strong></span>
+                    <span>{notifMessage.length}/300</span>
+                  </div>
+                </div>
+
+                {/* Live Preview Box */}
+                {notifMessage.trim() && (
+                  <div className="p-3 bg-[#111216] border border-[#282a36] rounded-md flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
+                      Live Notification Preview
+                    </span>
+                    <div className="flex items-start gap-2.5 mt-1">
+                      <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0 overflow-hidden">
+                        {currentUser.profilePicture ? (
+                          <img src={currentUser.profilePicture} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          currentUser.username.slice(0, 1).toUpperCase()
+                        )}
+                      </div>
+                      <div className="text-xs">
+                        <div className="font-bold text-neutral-200">{currentUser.username}</div>
+                        <div className="text-neutral-300 break-words mt-0.5">
+                          {notifMessage}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Submit button */}
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={notifSending || !notifMessage.trim()}
+                    className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-xs font-bold rounded-md shadow flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{notifSending ? 'Delivering...' : 'Send Notification'}</span>
+                  </button>
+                </div>
+              </form>
             </div>
           )}
 
