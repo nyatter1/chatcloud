@@ -101,11 +101,16 @@ export async function deleteUserFromFirestore(username: string): Promise<void> {
 // ----------------------------------------------------
 // 2. MESSAGES
 // ----------------------------------------------------
-export function subscribeToMessages(callback: (messages: ChatMessage[]) => void): () => void {
+export function subscribeToMessages(
+  callback: (messages: ChatMessage[]) => void,
+  serverId?: string | null,
+  channelId?: string | null
+): () => void {
   let isMounted = true;
 
   const fetchMessages = async () => {
-    const list = await apiFetch<ChatMessage[]>('/api/messages');
+    const q = serverId && channelId ? `?serverId=${encodeURIComponent(serverId)}&channelId=${encodeURIComponent(channelId)}` : '';
+    const list = await apiFetch<ChatMessage[]>(`/api/messages${q}`);
     if (list && isMounted) {
       localMessagesCache = list;
       callback([...localMessagesCache]);
@@ -339,3 +344,108 @@ export async function clearAllNotificationsForUser(username: string): Promise<vo
     method: 'DELETE',
   });
 }
+
+// ----------------------------------------------------
+// 7. SERVERS & CHANNELS & ROLES API
+// ----------------------------------------------------
+export interface ServerData {
+  id: string;
+  name: string;
+  owner: string;
+  iconUrl?: string | null;
+  bannerUrl?: string | null;
+}
+
+export interface ServerChannel {
+  id: string;
+  serverId: string;
+  name: string;
+}
+
+export interface ServerRole {
+  id: string;
+  serverId: string;
+  name: string;
+  colour: string;
+  position: number;
+  permissions: string[];
+}
+
+export interface ServerMember {
+  serverId: string;
+  username: string;
+  roles: string[];
+}
+
+export async function getServers(): Promise<ServerData[]> {
+  const list = await apiFetch<ServerData[]>('/api/servers');
+  return list || [];
+}
+
+export async function createServer(name: string, owner: string, iconUrl?: string | null): Promise<ServerData | null> {
+  return await apiFetch<ServerData>('/api/servers', {
+    method: 'POST',
+    body: JSON.stringify({ name, owner, iconUrl }),
+  });
+}
+
+export async function joinServer(serverId: string, username: string): Promise<boolean> {
+  const res = await apiFetch<{ success: boolean }>(`/api/servers/${encodeURIComponent(serverId)}/join`, {
+    method: 'POST',
+    body: JSON.stringify({ username }),
+  });
+  return !!res?.success;
+}
+
+export async function leaveServer(serverId: string, username: string): Promise<boolean> {
+  const res = await apiFetch<{ success: boolean }>(`/api/servers/${encodeURIComponent(serverId)}/leave`, {
+    method: 'POST',
+    body: JSON.stringify({ username }),
+  });
+  return !!res?.success;
+}
+
+export async function getServerMembers(serverId: string): Promise<ServerMember[]> {
+  const list = await apiFetch<ServerMember[]>(`/api/servers/${encodeURIComponent(serverId)}/members`);
+  return list || [];
+}
+
+export async function updateMemberRoles(serverId: string, username: string, roles: string[]): Promise<boolean> {
+  const res = await apiFetch<{ success: boolean }>(`/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(username)}/roles`, {
+    method: 'POST',
+    body: JSON.stringify({ roles }),
+  });
+  return !!res?.success;
+}
+
+export async function getServerChannels(serverId: string): Promise<ServerChannel[]> {
+  const list = await apiFetch<ServerChannel[]>(`/api/servers/${encodeURIComponent(serverId)}/channels`);
+  return list || [];
+}
+
+export async function createChannel(serverId: string, name: string): Promise<ServerChannel | null> {
+  return await apiFetch<ServerChannel>(`/api/servers/${encodeURIComponent(serverId)}/channels`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function getServerRoles(serverId: string): Promise<ServerRole[]> {
+  const list = await apiFetch<ServerRole[]>(`/api/servers/${encodeURIComponent(serverId)}/roles`);
+  return list || [];
+}
+
+export async function createServerRole(serverId: string, role: Partial<ServerRole>): Promise<ServerRole | null> {
+  return await apiFetch<ServerRole>(`/api/servers/${encodeURIComponent(serverId)}/roles`, {
+    method: 'POST',
+    body: JSON.stringify(role),
+  });
+}
+
+export async function deleteServerRole(serverId: string, roleId: string): Promise<boolean> {
+  const res = await apiFetch<{ success: boolean }>(`/api/servers/${encodeURIComponent(serverId)}/roles/${encodeURIComponent(roleId)}`, {
+    method: 'DELETE',
+  });
+  return !!res?.success;
+}
+

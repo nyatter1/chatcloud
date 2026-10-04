@@ -35,6 +35,21 @@ import {
   subscribeToUserNotifications,
   deleteNotificationFromFirestore,
   clearAllNotificationsForUser,
+  getServers,
+  createServer,
+  joinServer,
+  leaveServer,
+  getServerMembers,
+  updateMemberRoles,
+  getServerChannels,
+  createChannel,
+  getServerRoles,
+  createServerRole,
+  deleteServerRole,
+  ServerRole,
+  ServerChannel,
+  ServerData,
+  ServerMember,
 } from '../services/apiService';
 
 interface ChatScreenProps {
@@ -78,16 +93,121 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     message: string;
   } | null>(null);
 
+  // Server, Channel & Role State
+  const [servers, setServers] = useState<ServerData[]>([]);
+  const [activeServer, setActiveServer] = useState<ServerData | null>(null);
+  const [channels, setChannels] = useState<ServerChannel[]>([]);
+  const [activeChannel, setActiveChannel] = useState<ServerChannel | null>(null);
+  const [serverRoles, setServerRoles] = useState<ServerRole[]>([]);
+  const [serverMembers, setServerMembers] = useState<ServerMember[]>([]);
+  const [isCreateServerOpen, setIsCreateServerOpen] = useState(false);
+  const [newServerName, setNewServerName] = useState('');
+  const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
+  const [newChannelName, setNewChannelName] = useState('');
+  const [isManageRolesOpen, setIsManageRolesOpen] = useState(false);
+  const [newRoleName, setNewRoleName] = useState('');
+  const [newRoleColour, setNewRoleColour] = useState('#99aab5');
+  const [isExploreOpen, setIsExploreOpen] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Subscribe to Live Firestore Messages
+  const loadServerConfig = async () => {
+    const list = await getServers();
+    setServers(list);
+  };
+
+  useEffect(() => {
+    loadServerConfig();
+  }, []);
+
+  useEffect(() => {
+    if (activeServer) {
+      getServerChannels(activeServer.id).then((list) => {
+        setChannels(list);
+        if (list && list.length > 0) {
+          setActiveChannel(list[0]);
+        } else {
+          setActiveChannel(null);
+        }
+      });
+      getServerRoles(activeServer.id).then(setServerRoles);
+      getServerMembers(activeServer.id).then(setServerMembers);
+    } else {
+      setChannels([]);
+      setActiveChannel(null);
+      setServerRoles([]);
+      setServerMembers([]);
+    }
+  }, [activeServer?.id]);
+
+  const handleCreateServer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newServerName.trim()) return;
+    const s = await createServer(newServerName.trim(), currentUser.username);
+    if (s) {
+      setServers((prev) => [...prev, s]);
+      setActiveServer(s);
+      setIsCreateServerOpen(false);
+      setNewServerName('');
+    }
+  };
+
+  const handleCreateChannel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeServer || !newChannelName.trim()) return;
+    const ch = await createChannel(activeServer.id, newChannelName.trim());
+    if (ch) {
+      setChannels((prev) => [...prev, ch]);
+      setActiveChannel(ch);
+      setIsCreateChannelOpen(false);
+      setNewChannelName('');
+    }
+  };
+
+  const handleCreateRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeServer || !newRoleName.trim()) return;
+    const r = await createServerRole(activeServer.id, { name: newRoleName.trim(), colour: newRoleColour });
+    if (r) {
+      setServerRoles((prev) => [...prev, r]);
+      setNewRoleName('');
+    }
+  };
+
+  const handleDeleteRole = async (roleId: string) => {
+    if (!activeServer) return;
+    const success = await deleteServerRole(activeServer.id, roleId);
+    if (success) {
+      setServerRoles((prev) => prev.filter((r) => r.id !== roleId));
+    }
+  };
+
+  const handleJoinServer = async (serverId: string) => {
+    const success = await joinServer(serverId, currentUser.username);
+    if (success) {
+      loadServerConfig();
+      const s = servers.find((sv) => sv.id === serverId) || { id: serverId, name: 'Joined Server', owner: '' };
+      setActiveServer(s);
+      setIsExploreOpen(false);
+    }
+  };
+
+  const handleLeaveServer = async (serverId: string) => {
+    const success = await leaveServer(serverId, currentUser.username);
+    if (success) {
+      loadServerConfig();
+      setActiveServer(null);
+    }
+  };
+
+  // 1. Subscribe to Live Messages (filtered by server and channel if active)
   useEffect(() => {
     const unsubscribe = subscribeToMessages((liveMessages) => {
       setMessages(liveMessages);
-    });
+    }, activeServer?.id || null, activeChannel?.id || null);
     return () => unsubscribe();
-  }, []);
+  }, [activeServer?.id, activeChannel?.id]);
 
   // 2. Subscribe to Live Registered Users
   useEffect(() => {
@@ -316,7 +436,9 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       content: trimmed,
       timestamp: Date.now(),
       formattedTime,
-    };
+      serverId: activeServer?.id || null,
+      channelId: activeChannel?.id || null,
+    } as any;
 
     setInputText('');
     setReplyContext(null);
@@ -652,6 +774,137 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           />
         )}
 
+        {/* Leftmost Vertical Server Strip */}
+        <div className="w-16 bg-[#0f1013] border-r border-[#1a1b24] flex flex-col items-center py-4 gap-3 shrink-0 z-10">
+          {/* Global Lobby Button */}
+          <button
+            type="button"
+            onClick={() => setActiveServer(null)}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer text-white font-bold relative group ${
+              activeServer === null
+                ? 'bg-zinc-200 text-zinc-900 rounded-2xl'
+                : 'bg-[#1e2029] hover:bg-zinc-700 hover:rounded-2xl'
+            }`}
+            title="Global Chatlaxy"
+          >
+            G
+            {activeServer === null && (
+              <span className="absolute left-0 w-1 h-5 bg-white rounded-r-md top-1/2 -translate-y-1/2" />
+            )}
+          </button>
+
+          <div className="w-8 h-[2px] bg-neutral-800 rounded-full" />
+
+          {/* Servers list */}
+          <div className="flex-1 flex flex-col gap-2 w-full items-center overflow-y-auto no-scrollbar">
+            {servers.map((s) => {
+              const isActive = activeServer?.id === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setActiveServer(s)}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer font-bold relative group text-xs text-neutral-200 ${
+                    isActive
+                      ? 'bg-zinc-200 text-zinc-900 rounded-2xl'
+                      : 'bg-[#1e2029] hover:bg-zinc-700 hover:rounded-2xl'
+                  }`}
+                  title={s.name}
+                >
+                  {s.iconUrl ? (
+                    <img src={s.iconUrl} alt={s.name} className="w-full h-full object-cover rounded-inherit" />
+                  ) : (
+                    <span>{s.name.slice(0, 2).toUpperCase()}</span>
+                  )}
+                  {isActive && (
+                    <span className="absolute left-0 w-1 h-5 bg-white rounded-r-md top-1/2 -translate-y-1/2" />
+                  )}
+                </button>
+              );
+            })}
+
+            {/* Create Server Button */}
+            <button
+              type="button"
+              onClick={() => setIsCreateServerOpen(true)}
+              className="w-12 h-12 rounded-full bg-[#1e2029] hover:bg-emerald-600 hover:text-white flex items-center justify-center text-emerald-400 font-bold transition-all cursor-pointer text-xl"
+              title="Create Server"
+            >
+              +
+            </button>
+            
+            {/* Explore Servers Button */}
+            <button
+              type="button"
+              onClick={() => setIsExploreOpen(true)}
+              className="w-12 h-12 rounded-full bg-[#1e2029] hover:bg-purple-600 hover:text-white flex items-center justify-center text-purple-400 font-bold transition-all cursor-pointer text-sm font-black"
+              title="Explore Servers"
+            >
+              EXP
+            </button>
+          </div>
+        </div>
+
+        {/* Channels list Strip (rendered if a server is active) */}
+        {activeServer && (
+          <div className="w-40 bg-[#131419] border-r border-[#1f2029] flex flex-col shrink-0 z-10 animate-in slide-in-from-left duration-150">
+            {/* Server Header */}
+            <div className="p-3 border-b border-[#1f2029] flex flex-col gap-1 bg-[#16171d]">
+              <span className="text-xs font-extrabold text-neutral-100 truncate">{activeServer.name}</span>
+              <div className="flex gap-1.5 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsManageRolesOpen(true)}
+                  className="text-[10px] bg-[#24252f] hover:bg-zinc-700 text-neutral-300 font-bold py-0.5 px-1.5 rounded-xs cursor-pointer"
+                >
+                  Roles
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleLeaveServer(activeServer.id)}
+                  className="text-[10px] bg-red-950 hover:bg-red-900 text-red-300 font-bold py-0.5 px-1.5 rounded-xs cursor-pointer ml-auto"
+                >
+                  Leave
+                </button>
+              </div>
+            </div>
+
+            {/* Channels Header */}
+            <div className="p-2 flex items-center justify-between text-neutral-400 text-[9px] font-black uppercase tracking-wider">
+              <span>Channels</span>
+              <button
+                type="button"
+                onClick={() => setIsCreateChannelOpen(true)}
+                className="text-neutral-400 hover:text-white text-xs font-bold px-1 cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+
+            {/* Channel list */}
+            <div className="flex-1 overflow-y-auto px-1 flex flex-col gap-0.5">
+              {channels.map((ch) => {
+                const isChActive = activeChannel?.id === ch.id;
+                return (
+                  <button
+                    key={ch.id}
+                    type="button"
+                    onClick={() => setActiveChannel(ch)}
+                    className={`w-full text-left text-xs px-2 py-1 rounded-xs transition-colors cursor-pointer truncate flex items-center gap-1 ${
+                      isChActive
+                        ? 'bg-[#20222c] text-white font-semibold'
+                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-[#1a1b24]'
+                    }`}
+                  >
+                    <span>#</span>
+                    <span className="truncate">{ch.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Chat Section (With Custom Chat Background Support) */}
         <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#121316]">
           {/* Custom Chat Background Image Layer - ONLY covers chat area */}
@@ -888,6 +1141,176 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
         onClose={() => setIsProfileDecorationsOpen(false)}
         onSaveDecoration={handleSelectProfileDecoration}
       />
+
+      {/* Create Server Modal */}
+      {isCreateServerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="absolute inset-0" onClick={() => setIsCreateServerOpen(false)} />
+          <div className="relative z-10 w-full max-w-sm bg-[#161720] border border-[#2c2e3e] rounded-xs shadow-2xl p-5">
+            <h2 className="text-sm font-black text-neutral-100 mb-4 uppercase tracking-wider">Create a Server</h2>
+            <form onSubmit={handleCreateServer} className="flex flex-col gap-3">
+              <input
+                type="text"
+                placeholder="Server Name"
+                value={newServerName}
+                onChange={(e) => setNewServerName(e.target.value)}
+                className="w-full px-3 py-2 bg-[#111215] border border-[#2c2d35] rounded-md text-xs text-neutral-100 placeholder-neutral-500 outline-none"
+                required
+              />
+              <div className="flex justify-end gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateServerOpen(false)}
+                  className="px-3 py-1.5 text-xs text-neutral-400 hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs bg-zinc-200 hover:bg-white text-zinc-950 font-bold rounded-md cursor-pointer"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Channel Modal */}
+      {isCreateChannelOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="absolute inset-0" onClick={() => setIsCreateChannelOpen(false)} />
+          <div className="relative z-10 w-full max-w-sm bg-[#161720] border border-[#2c2e3e] rounded-xs shadow-2xl p-5">
+            <h2 className="text-sm font-black text-neutral-100 mb-4 uppercase tracking-wider">Create a Channel</h2>
+            <form onSubmit={handleCreateChannel} className="flex flex-col gap-3">
+              <input
+                type="text"
+                placeholder="Channel Name"
+                value={newChannelName}
+                onChange={(e) => setNewChannelName(e.target.value)}
+                className="w-full px-3 py-2 bg-[#111215] border border-[#2c2d35] rounded-md text-xs text-neutral-100 placeholder-neutral-500 outline-none"
+                required
+              />
+              <div className="flex justify-end gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateChannelOpen(false)}
+                  className="px-3 py-1.5 text-xs text-neutral-400 hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs bg-zinc-200 hover:bg-white text-zinc-950 font-bold rounded-md cursor-pointer"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Explore Servers Modal */}
+      {isExploreOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="absolute inset-0" onClick={() => setIsExploreOpen(false)} />
+          <div className="relative z-10 w-full max-w-md bg-[#161720] border border-[#2c2e3e] rounded-xs shadow-2xl p-5 max-h-[80vh] flex flex-col">
+            <h2 className="text-sm font-black text-neutral-100 mb-4 uppercase tracking-wider">Explore Public Servers</h2>
+            <div className="flex-1 overflow-y-auto flex flex-col gap-2">
+              {servers.length === 0 ? (
+                <span className="text-xs text-neutral-400">No public servers found. Be the first to create one!</span>
+              ) : (
+                servers.map((s) => (
+                  <div key={s.id} className="p-3 bg-[#111215] border border-[#2c2d35] rounded-md flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-neutral-100">{s.name}</span>
+                      <span className="text-[10px] text-neutral-500">Created by: {s.owner}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleJoinServer(s.id)}
+                      className="px-3 py-1 bg-zinc-200 hover:bg-white text-zinc-950 text-xs font-bold rounded-md cursor-pointer"
+                    >
+                      Join
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsExploreOpen(false)}
+              className="mt-4 px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-neutral-300 text-xs font-bold rounded-md cursor-pointer self-end"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Server Roles Modal */}
+      {isManageRolesOpen && activeServer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="absolute inset-0" onClick={() => setIsManageRolesOpen(false)} />
+          <div className="relative z-10 w-full max-w-md bg-[#161720] border border-[#2c2e3e] rounded-xs shadow-2xl p-5 max-h-[85vh] flex flex-col">
+            <h2 className="text-sm font-black text-neutral-100 mb-4 uppercase tracking-wider">Server Roles: {activeServer.name}</h2>
+            
+            {/* Create Role Form */}
+            <form onSubmit={handleCreateRole} className="mb-4 p-3 bg-[#111215] border border-[#2c2d35] rounded-md flex gap-2">
+              <input
+                type="text"
+                placeholder="New Role Name"
+                value={newRoleName}
+                onChange={(e) => setNewRoleName(e.target.value)}
+                className="flex-1 px-3 py-1.5 bg-[#161720] border border-[#2c2d35] rounded-xs text-xs text-neutral-100 outline-none"
+                required
+              />
+              <input
+                type="color"
+                value={newRoleColour}
+                onChange={(e) => setNewRoleColour(e.target.value)}
+                className="w-10 h-8 rounded border-none cursor-pointer"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 bg-zinc-200 hover:bg-white text-zinc-950 text-xs font-bold rounded-md cursor-pointer"
+              >
+                Add
+              </button>
+            </form>
+
+            {/* List Roles */}
+            <div className="flex-1 overflow-y-auto flex flex-col gap-2">
+              <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">Roles</span>
+              {serverRoles.map((r) => (
+                <div key={r.id} className="p-2.5 bg-[#111215] border border-[#2c2d35] rounded-md flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: r.colour }} />
+                    <span className="text-xs font-bold text-neutral-100">{r.name}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteRole(r.id)}
+                    className="text-red-400 hover:text-red-300 text-xs font-bold cursor-pointer"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsManageRolesOpen(false)}
+              className="mt-4 px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-neutral-300 text-xs font-bold rounded-md cursor-pointer self-end"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

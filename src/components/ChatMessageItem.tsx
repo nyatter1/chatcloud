@@ -163,6 +163,30 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               </span>
             </button>
 
+            {/* Global Tags */}
+            {senderProfile?.rank === 'DEV' && (
+              <span className="text-[9px] bg-red-950/60 border border-red-500/30 text-red-400 font-extrabold px-1 py-0.5 rounded-sm uppercase tracking-wider">
+                DEV
+              </span>
+            )}
+            {senderProfile?.rank === 'FOUNDER' && (
+              <span className="text-[9px] bg-amber-950/60 border border-amber-500/30 text-amber-400 font-extrabold px-1 py-0.5 rounded-sm uppercase tracking-wider">
+                FOUNDER
+              </span>
+            )}
+            {(!senderProfile?.rank || (senderProfile?.rank !== 'DEV' && senderProfile?.rank !== 'FOUNDER')) && senderProfile?.rank && (
+              <span className="text-[9px] bg-sky-950/60 border border-sky-500/30 text-sky-400 font-extrabold px-1 py-0.5 rounded-sm uppercase tracking-wider">
+                {senderProfile.rank}
+              </span>
+            )}
+
+            {/* Server-Specific Role Badge */}
+            {senderProfile && (message as any).serverId && (
+              <span className="text-[9px] bg-zinc-800 text-zinc-300 font-semibold px-1 py-0.5 rounded-sm">
+                Member
+              </span>
+            )}
+
             {/* Timestamp */}
             <span className="text-[11px] text-neutral-500 font-mono">
               {message.formattedTime}

@@ -104,9 +104,16 @@ app.delete('/api/users/:username', async (req, res) => {
 // ====================================================
 app.get('/api/messages', async (req, res) => {
   try {
+    const { serverId, channelId } = req.query;
     const list = await dbService.getCollection('messages');
-    list.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-    res.json(list.slice(-250));
+    let filtered = list;
+    if (serverId && channelId) {
+      filtered = list.filter((m) => m.serverId === serverId && m.channelId === channelId);
+    } else {
+      filtered = list.filter((m) => !m.serverId);
+    }
+    filtered.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    res.json(filtered.slice(-250));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -304,6 +311,163 @@ app.delete('/api/notifications/user/:username', async (req, res) => {
         await dbService.deleteDoc('notifications', n.id);
       }
     }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// 9. SERVERS API
+// ====================================================
+app.get('/api/servers', async (req, res) => {
+  try {
+    const list = await dbService.getCollection('servers');
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/servers', async (req, res) => {
+  try {
+    const { name, owner, iconUrl } = req.body;
+    if (!name || !owner) return res.status(400).json({ error: 'Name and owner are required' });
+    const id = `server-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const serverObj = { id, name, owner, iconUrl: iconUrl || null };
+    await dbService.setDoc('servers', id, serverObj, false);
+    
+    const memberId = `${id}:${owner.toLowerCase()}`;
+    await dbService.setDoc('server_members', memberId, { serverId: id, username: owner, roles: ['Owner'] }, false);
+    
+    const channelId = `channel-${Date.now()}-general`;
+    const generalChannel = { id: channelId, serverId: id, name: 'general' };
+    await dbService.setDoc('server_channels', channelId, generalChannel, false);
+
+    res.status(201).json(serverObj);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/servers/:serverId/join', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ error: 'Username required' });
+    const memberId = `${serverId}:${username.toLowerCase()}`;
+    await dbService.setDoc('server_members', memberId, { serverId, username, roles: ['Member'] }, false);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/servers/:serverId/leave', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const { username } = req.body;
+    const memberId = `${serverId}:${username.toLowerCase()}`;
+    await dbService.deleteDoc('server_members', memberId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/servers/:serverId/members', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const list = await dbService.getCollection('server_members');
+    const filtered = list.filter((m) => m.serverId === serverId);
+    res.json(filtered);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/servers/:serverId/members/:username/roles', async (req, res) => {
+  try {
+    const { serverId, username } = req.params;
+    const { roles } = req.body;
+    const memberId = `${serverId}:${username.toLowerCase()}`;
+    const existing = await dbService.getDoc('server_members', memberId);
+    if (!existing) return res.status(404).json({ error: 'Member not found' });
+    existing.roles = roles || [];
+    await dbService.setDoc('server_members', memberId, existing, false);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// 10. CHANNELS API
+// ====================================================
+app.get('/api/servers/:serverId/channels', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const list = await dbService.getCollection('server_channels');
+    const filtered = list.filter((c) => c.serverId === serverId);
+    res.json(filtered);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/servers/:serverId/channels', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Channel name required' });
+    const id = `channel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const channelObj = { id, serverId, name: name.toLowerCase().replace(/\s+/g, '-') };
+    await dbService.setDoc('server_channels', id, channelObj, false);
+    res.status(201).json(channelObj);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// 11. ROLES API
+// ====================================================
+app.get('/api/servers/:serverId/roles', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const list = await dbService.getCollection('server_roles');
+    const filtered = list.filter((r) => r.serverId === serverId);
+    res.json(filtered);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/servers/:serverId/roles', async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const { name, colour, position, permissions } = req.body;
+    if (!name) return res.status(400).json({ error: 'Role name required' });
+    const id = `role-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const roleObj = {
+      id,
+      serverId,
+      name,
+      colour: colour || '#99aab5',
+      position: position || 0,
+      permissions: permissions || []
+    };
+    await dbService.setDoc('server_roles', id, roleObj, false);
+    res.status(201).json(roleObj);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/servers/:serverId/roles/:roleId', async (req, res) => {
+  try {
+    const { roleId } = req.params;
+    await dbService.deleteDoc('server_roles', roleId);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
