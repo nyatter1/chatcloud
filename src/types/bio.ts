@@ -49,6 +49,16 @@ export interface TextSegment extends BioFormatting {
   text: string;
 }
 
+export type TextFormatMode = 'normal' | 'bold' | 'heavy' | 'italic' | 'heavy_italic';
+
+export interface TextStyleConfig {
+  colorType?: 'solid' | 'neon' | 'gradient';
+  colorValue?: string;
+  glowColor?: string;
+  font?: string;
+  format?: TextFormatMode;
+}
+
 export interface ProfileData {
   username: string;
   password?: string;
@@ -63,6 +73,14 @@ export interface ProfileData {
   chatBackground?: string | null;
   profileMusic?: string | null;
   profileEffect?: string | null;
+  profileBorder?: string | null;
+  customRankName?: string | null;
+  avatarFrame?: string | null;
+  usernameStyle?: TextStyleConfig | null;
+  chatTextStyle?: TextStyleConfig | null;
+  dailyMessagesDate?: string;
+  dailyMessagesCount?: number;
+  claimedDailyMilestones?: number[];
   wallet?: {
     ruby: number;
     gold: number;

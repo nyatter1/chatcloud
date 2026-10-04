@@ -1,54 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight, Check, User } from 'lucide-react';
+import { X, ChevronLeft, Check, User } from 'lucide-react';
 import { ProfileData } from '../types/bio';
-import { PROFILE_EFFECTS_LIST, ProfileEffectId } from '../types/profileEffects';
+import { PROFILE_BORDERS_LIST, getBorderConfig } from '../types/profileBorders';
 import { ProfileEffectCanvas } from './ProfileEffectCanvas';
 import { getRankConfig } from '../constants/ranks';
 import { RankId } from '../types/ranks';
-import { getBorderConfig } from '../types/profileBorders';
 import { UserAvatar } from './UserAvatar';
 
-interface ProfileEffectsModalProps {
+interface ProfileBordersModalProps {
   isOpen: boolean;
   currentUser: ProfileData;
   onClose: () => void;
-  onSaveEffect: (effectId: string | null) => void;
+  onSaveBorder: (borderId: string | null) => void;
 }
 
-export const ProfileEffectsModal: React.FC<ProfileEffectsModalProps> = ({
+export const ProfileBordersModal: React.FC<ProfileBordersModalProps> = ({
   isOpen,
   currentUser,
   onClose,
-  onSaveEffect,
+  onSaveBorder,
 }) => {
-  const initialEffectId = (currentUser.profileEffect as ProfileEffectId) || 'none';
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const initialBorderId = currentUser.profileBorder || 'none';
+  const [selectedBorderId, setSelectedBorderId] = useState<string>(initialBorderId);
 
-  // Sync index when opening
   useEffect(() => {
     if (isOpen) {
-      const idx = PROFILE_EFFECTS_LIST.findIndex(
-        (e) => e.id === (currentUser.profileEffect || 'none')
-      );
-      setSelectedIndex(idx >= 0 ? idx : 0);
+      setSelectedBorderId(currentUser.profileBorder || 'none');
     }
-  }, [isOpen, currentUser.profileEffect]);
+  }, [isOpen, currentUser.profileBorder]);
 
   if (!isOpen) return null;
 
-  const currentEffect = PROFILE_EFFECTS_LIST[selectedIndex] || PROFILE_EFFECTS_LIST[0];
-
-  const handlePrev = () => {
-    setSelectedIndex((prev) => (prev > 0 ? prev - 1 : PROFILE_EFFECTS_LIST.length - 1));
-  };
-
-  const handleNext = () => {
-    setSelectedIndex((prev) => (prev < PROFILE_EFFECTS_LIST.length - 1 ? prev + 1 : 0));
-  };
+  const currentBorderConfig = getBorderConfig(selectedBorderId);
 
   const handleSave = () => {
-    const finalVal = currentEffect.id === 'none' ? null : currentEffect.id;
-    onSaveEffect(finalVal);
+    const finalVal = selectedBorderId === 'none' ? null : selectedBorderId;
+    onSaveBorder(finalVal);
     onClose();
   };
 
@@ -56,8 +43,6 @@ export const ProfileEffectsModal: React.FC<ProfileEffectsModalProps> = ({
   const effectiveRank: RankId =
     currentUser.rank || (currentUser.username.toLowerCase() === 'null' ? 'DEV' : 'VIP');
   const rankConfig = getRankConfig(effectiveRank);
-  const activeBorderConfig = getBorderConfig(currentUser.profileBorder);
-
   const plainBioText = currentUser.bioSegments?.map((s) => s.text).join('\n') || '';
 
   return (
@@ -73,14 +58,22 @@ export const ProfileEffectsModal: React.FC<ProfileEffectsModalProps> = ({
         {/* MODAL HEADER                                       */}
         {/* ================================================== */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#25262f] bg-[#16171d]">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-bold text-neutral-100 uppercase tracking-wide flex items-center gap-1.5">
-              <span>✎</span>
-              <span>Profile Effects</span>
-            </span>
-          </div>
+          {/* Back to Preview Button */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex items-center gap-1 text-xs text-neutral-400 hover:text-white transition-colors cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Back to Preview</span>
+          </button>
 
-          {/* Close button - NO price on top right because effects are FREE */}
+          {/* Title - NO price/currency requirement because borders are FREE */}
+          <h2 className="text-sm font-bold text-neutral-100 uppercase tracking-wide">
+            Profile Borders
+          </h2>
+
+          {/* Close button */}
           <button
             type="button"
             onClick={onClose}
@@ -96,10 +89,12 @@ export const ProfileEffectsModal: React.FC<ProfileEffectsModalProps> = ({
         {/* ================================================== */}
         <div className="p-4 flex flex-col gap-3.5 max-h-[85vh] overflow-y-auto">
           {/* ================================================== */}
-          {/* LARGE LIVE PROFILE CARD PREVIEW                    */}
+          {/* LIVE PROFILE CARD PREVIEW WITH SELECTED BORDER     */}
           {/* ================================================== */}
-          <div className={`w-full bg-[#141519] rounded-xs overflow-hidden flex flex-col relative transition-all ${activeBorderConfig.cardClasses}`}>
-            {/* Banner Section */}
+          <div
+            className={`w-full bg-[#141519] rounded-xs overflow-hidden transition-all duration-200 flex flex-col relative ${currentBorderConfig.cardClasses}`}
+          >
+            {/* Banner Section - strictly behind avatar */}
             <div className="h-20 sm:h-24 w-full bg-[#1b1c23] relative z-0 overflow-hidden border-b border-[#25262f] shrink-0">
               {currentUser.banner ? (
                 <img
@@ -118,11 +113,11 @@ export const ProfileEffectsModal: React.FC<ProfileEffectsModalProps> = ({
             </div>
 
             {/* Profile Information Area with Profile Effect Living Behind */}
-            <div className="px-4 pt-0 pb-4 relative z-10 flex flex-col flex-1 min-h-[190px]">
-              {/* Profile Effect Canvas (behind content, clipped strictly inside card) */}
-              {currentEffect.id !== 'none' && (
+            <div className="px-4 pt-0 pb-4 relative z-10 flex flex-col flex-1 min-h-[185px]">
+              {/* Profile Effect Canvas (plays live underneath/inside the profile) */}
+              {currentUser.profileEffect && currentUser.profileEffect !== 'none' && (
                 <div className="absolute inset-0 pointer-events-none -z-10 overflow-hidden rounded-b-xs">
-                  <ProfileEffectCanvas effectId={currentEffect.id} />
+                  <ProfileEffectCanvas effectId={currentUser.profileEffect} />
                   {/* Subtle dark overlay for 100% text readability */}
                   <div className="absolute inset-0 bg-[#141519]/70 pointer-events-none" />
                 </div>
@@ -148,7 +143,7 @@ export const ProfileEffectsModal: React.FC<ProfileEffectsModalProps> = ({
               </div>
 
               {/* User Name & Handle */}
-              <div className="flex flex-col mb-2.5">
+              <div className="flex flex-col mb-2">
                 {rankConfig && (
                   <div className="flex items-center gap-1 mb-0.5">
                     <img
@@ -163,71 +158,90 @@ export const ProfileEffectsModal: React.FC<ProfileEffectsModalProps> = ({
                   </div>
                 )}
 
-                  <h3 className="text-sm font-bold text-neutral-100 tracking-tight leading-none">
-                    {currentUser.username}
-                  </h3>
-                  <span className="text-[11px] text-neutral-500 font-mono mt-0.5">
-                    @{currentUser.username.toLowerCase().replace(/\s+/g, '')}
-                  </span>
-                </div>
+                <h3 className="text-sm font-bold text-neutral-100 tracking-tight leading-none">
+                  {currentUser.username}
+                </h3>
+                <span className="text-[11px] text-neutral-500 font-mono mt-0.5">
+                  @{currentUser.username.toLowerCase().replace(/\s+/g, '')}
+                </span>
+              </div>
 
-                {/* Info preview summary */}
-                <div className="flex flex-col text-xs text-neutral-200 divide-y divide-[#20222a]/70 bg-[#16171e]/60 rounded-xs px-2.5 py-0.5 border border-[#272934]/60">
-                  <div className="flex items-center justify-between py-1.5 text-[11px]">
-                    <span className="text-neutral-400">Age</span>
-                    <span className="text-neutral-200 font-mono">{currentUser.age || '—'}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1.5 text-[11px]">
-                    <span className="text-neutral-400">Gender</span>
-                    <span className="text-neutral-200">{currentUser.gender || '—'}</span>
-                  </div>
-                  {plainBioText && (
-                    <div className="py-1.5 text-[11px] text-neutral-300 line-clamp-2 italic">
-                      {plainBioText}
-                    </div>
-                  )}
+              {/* Info summary */}
+              <div className="flex flex-col text-xs text-neutral-200 divide-y divide-[#20222a]/70 bg-[#16171e]/60 rounded-xs px-2.5 py-0.5 border border-[#272934]/60">
+                <div className="flex items-center justify-between py-1 text-[11px]">
+                  <span className="text-neutral-400">Age</span>
+                  <span className="text-neutral-200 font-mono">{currentUser.age || '—'}</span>
                 </div>
+                <div className="flex items-center justify-between py-1 text-[11px]">
+                  <span className="text-neutral-400">Gender</span>
+                  <span className="text-neutral-200">{currentUser.gender || '—'}</span>
+                </div>
+                {plainBioText && (
+                  <div className="py-1 text-[11px] text-neutral-300 line-clamp-2 italic">
+                    {plainBioText}
+                  </div>
+                )}
               </div>
             </div>
+          </div>
 
           {/* ================================================== */}
-          {/* CAROUSEL SELECTOR: [ ← ] Effect Name [ → ]         */}
+          {/* BORDER SELECTION GRID (5 BORDERS PER ROW)          */}
           {/* ================================================== */}
           <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-3 px-3 py-2.5 bg-[#17181f] border border-[#2b2d39] rounded-xs select-none">
-              <button
-                type="button"
-                onClick={handlePrev}
-                aria-label="Previous effect"
-                className="p-1.5 bg-[#20222c] hover:bg-[#2b2e3c] text-neutral-200 hover:text-white rounded-xs border border-[#37394a] transition-colors cursor-pointer shrink-0"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-
-              <div className="flex flex-col items-center justify-center flex-1 text-center min-w-0">
-                <span className="text-sm font-bold text-neutral-100 tracking-wide truncate">
-                  {currentEffect.name}
-                </span>
-                <span className="text-[11px] text-neutral-400 truncate max-w-[200px]">
-                  {currentEffect.description}
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleNext}
-                aria-label="Next effect"
-                className="p-1.5 bg-[#20222c] hover:bg-[#2b2e3c] text-neutral-200 hover:text-white rounded-xs border border-[#37394a] transition-colors cursor-pointer shrink-0"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
+            <div className="flex items-center justify-between px-1 text-xs">
+              <span className="text-neutral-300 font-semibold tracking-wide">
+                Select Profile Border
+              </span>
+              <span className="text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+                100% Free
+              </span>
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-neutral-500 px-1">
-              <span>{selectedIndex + 1} of {PROFILE_EFFECTS_LIST.length}</span>
-              <span className="text-emerald-400 font-semibold uppercase tracking-wider text-[10px]">
-                Free
-              </span>
+            {/* Scrollable 5-column grid */}
+            <div className="grid grid-cols-5 gap-2 max-h-56 overflow-y-auto p-1 bg-[#101115] border border-[#23242e] rounded-xs select-none">
+              {PROFILE_BORDERS_LIST.map((border) => {
+                const isSelected = selectedBorderId === border.id;
+                return (
+                  <button
+                    key={border.id}
+                    type="button"
+                    onClick={() => setSelectedBorderId(border.id)}
+                    title={`${border.name}: ${border.description}`}
+                    className={`flex flex-col items-center p-1.5 rounded-xs transition-all cursor-pointer relative group ${
+                      isSelected
+                        ? 'bg-[#232632] ring-2 ring-purple-400'
+                        : 'bg-[#181920] hover:bg-[#1f2029] border border-white/5'
+                    }`}
+                  >
+                    {/* Miniature Border Thumbnail */}
+                    <div
+                      className={`w-full h-10 rounded-xs flex items-center justify-center relative overflow-hidden transition-transform group-hover:scale-105 ${border.previewThumbnailClasses}`}
+                    >
+                      {border.id === 'none' ? (
+                        <span className="text-[9px] text-neutral-500 font-mono">None</span>
+                      ) : (
+                        <div className="w-4 h-4 rounded-xs border border-white/20 bg-white/5" />
+                      )}
+
+                      {isSelected && (
+                        <div className="absolute inset-0 bg-purple-500/20 flex items-center justify-center">
+                          <Check className="w-3.5 h-3.5 text-white drop-shadow-md" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Border Name */}
+                    <span
+                      className={`text-[10px] mt-1 truncate max-w-full text-center leading-tight font-medium ${
+                        isSelected ? 'text-white font-bold' : 'text-neutral-400'
+                      }`}
+                    >
+                      {border.name}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

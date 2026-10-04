@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, X, User, Sparkles, AlertCircle, Info } from 'lucide-react';
+import { Send, X, User, Sparkles, AlertCircle, Info, Menu } from 'lucide-react';
 import { ChatMessage, ReplyContext } from '../types/chat';
 import { ProfileData } from '../types/bio';
 import { ChatMessageItem } from './ChatMessageItem';
@@ -7,6 +7,14 @@ import { ProfileMenuDropdown } from './ProfileMenuDropdown';
 import { OnlinePlayersPanel } from './OnlinePlayersPanel';
 import { ProfileModal } from './ProfileModal';
 import { ChatBackgroundModal } from './ChatBackgroundModal';
+import { HamburgerMenuDrawer } from './HamburgerMenuDrawer';
+import { DailyRewardsModal } from './DailyRewardsModal';
+import { AvatarFrameStudioModal } from './AvatarFrameStudioModal';
+import { UserAvatar } from './UserAvatar';
+import { NewsPanel } from './NewsPanel';
+import { NewsComposer } from './NewsComposer';
+import { ChatlaxyLogo } from './ChatlaxyLogo';
+import { NewsPost, NewsReactionType } from '../types/news';
 import { handleChatCommand } from '../utils/commandHandler';
 import { isFounderOrAbove } from '../utils/permissions';
 import { addAuditLog } from '../utils/auditLogger';
@@ -17,6 +25,10 @@ import {
   clearAllMessagesInFirestore,
   subscribeToUsers,
   saveUserToFirestore,
+  subscribeToNews,
+  createNewsPostInFirestore,
+  deleteNewsPostFromFirestore,
+  updateNewsPostInFirestore,
 } from '../services/firestoreService';
 
 interface ChatScreenProps {
@@ -39,6 +51,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
   const [inputText, setInputText] = useState('');
   const [replyContext, setReplyContext] = useState<ReplyContext | null>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
+  const [isDailyRewardsOpen, setIsDailyRewardsOpen] = useState(false);
+  const [isAvatarFramesOpen, setIsAvatarFramesOpen] = useState(false);
+  const [isNewsOpen, setIsNewsOpen] = useState(false);
+  const [hasUnreadNews, setHasUnreadNews] = useState(false);
+  const [newsPosts, setNewsPosts] = useState<NewsPost[]>([]);
+  const [isComposerModalOpen, setIsComposerModalOpen] = useState(false);
   const [activeProfileTarget, setActiveProfileTarget] = useState<string | null>(null);
   const [isChatBgModalOpen, setIsChatBgModalOpen] = useState(false);
   const [previewChatBackground, setPreviewChatBackground] = useState<string | null>(
@@ -68,7 +87,24 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     return () => unsubscribe();
   }, []);
 
-  // 3. Auto-sync missing user profile pictures and banners from chat messages & active session into Firestore
+  // 3. Subscribe to Live Firestore News Announcements
+  useEffect(() => {
+    const lastRead = Number(localStorage.getItem('chatlaxy_last_read_news_time') || '0');
+    const unsubscribe = subscribeToNews((posts) => {
+      setNewsPosts(posts);
+      if (posts.length > 0) {
+        const latestTs = Math.max(...posts.map((p) => p.timestamp));
+        if (latestTs > lastRead && !isNewsOpen) {
+          setHasUnreadNews(true);
+        }
+      } else {
+        setHasUnreadNews(false);
+      }
+    });
+    return () => unsubscribe();
+  }, [isNewsOpen]);
+
+  // 4. Auto-sync missing user profile pictures and banners from chat messages & active session into Firestore
   useEffect(() => {
     if (messages.length === 0) return;
 
@@ -178,6 +214,21 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       }
     }
 
+    // Daily message counting
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const isSameDay = currentUser.dailyMessagesDate === todayKey;
+    const nextCount = isSameDay ? (currentUser.dailyMessagesCount || 0) + 1 : 1;
+    const nextClaimed = isSameDay ? currentUser.claimedDailyMilestones || [] : [];
+
+    const updatedUser: ProfileData = {
+      ...currentUser,
+      dailyMessagesDate: todayKey,
+      dailyMessagesCount: nextCount,
+      claimedDailyMilestones: nextClaimed,
+    };
+    onUpdateCurrentUser(updatedUser);
+    saveUserToFirestore(updatedUser);
+
     const now = new Date();
     const formattedTime = now.toLocaleTimeString([], {
       hour: 'numeric',
@@ -190,6 +241,10 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       senderName: currentUser.username,
       senderHandle: `@${currentUser.username.toLowerCase().replace(/\s+/g, '')}`,
       senderAvatar: currentUser.profilePicture,
+      senderAvatarFrame: currentUser.avatarFrame || currentUser.effects?.pfpBorder || null,
+      senderCustomRankName: currentUser.customRankName || null,
+      senderUsernameStyle: currentUser.usernameStyle || null,
+      contentStyle: currentUser.chatTextStyle || null,
       isSystemBot: false,
       content: trimmed,
       timestamp: Date.now(),
@@ -211,6 +266,172 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     setTimeout(() => {
       inputRef.current?.focus();
     }, 10);
+  };
+
+  // Claim a daily message reward
+  const handleClaimDailyReward = async (milestoneCount: number, gold: number, rubies: number) => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const currentClaimed =
+      currentUser.dailyMessagesDate === todayKey
+        ? currentUser.claimedDailyMilestones || []
+        : [];
+    if (currentClaimed.includes(milestoneCount)) return;
+
+    const updated: ProfileData = {
+      ...currentUser,
+      dailyMessagesDate: todayKey,
+      claimedDailyMilestones: [...currentClaimed, milestoneCount],
+      wallet: {
+        gold: (currentUser.wallet?.gold || 0) + gold,
+        ruby: (currentUser.wallet?.ruby || 0) + rubies,
+      },
+    };
+
+    onUpdateCurrentUser(updated);
+    await saveUserToFirestore(updated);
+    addAuditLog(
+      currentUser.username,
+      'Claimed Daily Reward',
+      `Claimed milestone ${milestoneCount} messages: +${gold} Gold, +${rubies} Rubies`,
+      'user'
+    );
+  };
+
+  // Select an avatar frame
+  const handleSelectAvatarFrame = async (frameId: string | null) => {
+    const updated: ProfileData = {
+      ...currentUser,
+      avatarFrame: frameId,
+      effects: {
+        ...currentUser.effects,
+        pfpBorder: frameId || undefined,
+      },
+    };
+
+    onUpdateCurrentUser(updated);
+    await saveUserToFirestore(updated);
+    addAuditLog(
+      currentUser.username,
+      'Equipped Avatar Frame',
+      `Equipped avatar frame: ${frameId || 'none'}`,
+      'user'
+    );
+  };
+
+  // Open News panel & clear unread notifications
+  const handleOpenNews = () => {
+    setHasUnreadNews(false);
+    localStorage.setItem('chatlaxy_last_read_news_time', Date.now().toString());
+    setIsNewsOpen(true);
+  };
+
+  // Publish a new announcement
+  const handlePublishNews = async (
+    content: string,
+    mediaUrl?: string | null,
+    mediaType?: 'image' | 'video' | 'gif' | null
+  ) => {
+    if (!isFounderOrAbove(currentUser)) return;
+
+    const newPost: NewsPost = {
+      id: `news_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      authorUsername: currentUser.username,
+      authorAvatar: currentUser.profilePicture,
+      authorAvatarFrame: currentUser.avatarFrame || currentUser.effects?.pfpBorder,
+      authorRank: currentUser.rank || 'DEV',
+      content,
+      mediaUrl: mediaUrl || null,
+      mediaType: mediaType || null,
+      timestamp: Date.now(),
+      reactions: {
+        like: [],
+        dislike: [],
+        heart: [],
+        laugh: [],
+      },
+      comments: [],
+    };
+
+    await createNewsPostInFirestore(newPost);
+    addAuditLog(
+      currentUser.username,
+      'Published News Post',
+      `Published news: "${content.slice(0, 35)}..."`,
+      'admin'
+    );
+    handleOpenNews();
+  };
+
+  // Delete a news post
+  const handleDeleteNewsPost = async (postId: string) => {
+    if (!isFounderOrAbove(currentUser)) return;
+    await deleteNewsPostFromFirestore(postId);
+    addAuditLog(
+      currentUser.username,
+      'Deleted News Post',
+      `Deleted news post ID: ${postId}`,
+      'admin'
+    );
+  };
+
+  // Toggle user reaction on a news post
+  const handleToggleNewsReaction = async (postId: string, reaction: NewsReactionType) => {
+    const post = newsPosts.find((p) => p.id === postId);
+    if (!post) return;
+
+    const username = currentUser.username;
+    const currentList = post.reactions[reaction] || [];
+    const hasReacted = currentList.includes(username);
+
+    const updatedList = hasReacted
+      ? currentList.filter((u) => u !== username)
+      : [...currentList, username];
+
+    const updatedPost: NewsPost = {
+      ...post,
+      reactions: {
+        ...post.reactions,
+        [reaction]: updatedList,
+      },
+    };
+
+    await updateNewsPostInFirestore(updatedPost);
+  };
+
+  // Add comment to a news post
+  const handleAddNewsComment = async (postId: string, content: string) => {
+    const post = newsPosts.find((p) => p.id === postId);
+    if (!post) return;
+
+    const newComment = {
+      id: `comm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      authorUsername: currentUser.username,
+      authorAvatar: currentUser.profilePicture,
+      authorAvatarFrame: currentUser.avatarFrame || currentUser.effects?.pfpBorder,
+      content,
+      timestamp: Date.now(),
+    };
+
+    const updatedPost: NewsPost = {
+      ...post,
+      comments: [...(post.comments || []), newComment],
+    };
+
+    await updateNewsPostInFirestore(updatedPost);
+  };
+
+  // Delete comment from a news post
+  const handleDeleteNewsComment = async (postId: string, commentId: string) => {
+    if (!isFounderOrAbove(currentUser)) return;
+    const post = newsPosts.find((p) => p.id === postId);
+    if (!post) return;
+
+    const updatedPost: NewsPost = {
+      ...post,
+      comments: (post.comments || []).filter((c) => c.id !== commentId),
+    };
+
+    await updateNewsPostInFirestore(updatedPost);
   };
 
   // Handle reply button clicked on message menu
@@ -255,33 +476,41 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
     <div className="flex flex-col h-screen w-full bg-[#121316] text-neutral-100 overflow-hidden select-none">
       {/* ================================================== */}
       {/* TOP BAR                                           */}
-      {/* Left: ChatCloud.                                  */}
+      {/* Left: Hamburger button + Big Logo.                */}
       {/* Right: User's profile picture only.               */}
       {/* ================================================== */}
-      <header className="h-14 sm:h-16 px-4 sm:px-6 bg-[#16171b] border-b border-[#25262d] flex items-center justify-between shrink-0 z-20 relative">
-        {/* Brand Wordmark Only */}
-        <span className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-100">
-          chatlaxy
-        </span>
+      <header className="h-14 sm:h-16 pl-2 sm:pl-3 pr-4 sm:pr-6 bg-[#16171b] border-b border-[#25262d] flex items-center justify-between shrink-0 z-20 relative">
+        {/* Left: Hamburger Menu (Opens sidebar) + Static Chatlaxy Logo Text */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={() => setIsHamburgerOpen((prev) => !prev)}
+            aria-label="Open navigation menu"
+            className="relative p-1.5 sm:p-2 text-neutral-300 hover:text-white hover:bg-[#20222c] rounded-xs transition-colors cursor-pointer shrink-0"
+          >
+            <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
+            {hasUnreadNews && (
+              <span className="absolute top-0.5 right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-[#16171b] animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.9)]" />
+            )}
+          </button>
+          <ChatlaxyLogo size="md" />
+        </div>
 
-        {/* Top Right: ONLY the user's profile picture */}
+        {/* Top Right: ONLY the user's profile picture with active Avatar Frame */}
         <div className="flex items-center">
           <button
             type="button"
             onClick={() => setIsProfileMenuOpen((prev) => !prev)}
             aria-label="Open profile menu"
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-[#242630] border-2 border-[#373946] hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-zinc-400 transition-all flex items-center justify-center cursor-pointer shadow-sm"
+            className="focus:outline-none cursor-pointer transition-transform hover:scale-105"
           >
-            {currentUser.profilePicture ? (
-              <img
-                src={currentUser.profilePicture}
-                alt={currentUser.username}
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <User className="w-5 h-5 text-neutral-400" />
-            )}
+            <UserAvatar
+              src={currentUser.profilePicture}
+              username={currentUser.username}
+              frameId={currentUser.avatarFrame || currentUser.effects?.pfpBorder}
+              size="sm"
+              shape="circle"
+            />
           </button>
         </div>
 
@@ -298,9 +527,26 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
       </header>
 
       {/* ================================================== */}
-      {/* MAIN BODY: CHAT (LEFT/CENTER) + ONLINE PANEL (RIGHT)*/}
+      {/* MAIN BODY: NEWS (PINNED LEFT) + CHAT + ONLINE PANEL*/}
       {/* ================================================== */}
       <div className="flex flex-1 overflow-hidden relative">
+        {/* Pinned News Panel on Left (NOT over the chat) */}
+        {isNewsOpen && (
+          <NewsPanel
+            currentUser={currentUser}
+            newsPosts={newsPosts}
+            onClose={() => setIsNewsOpen(false)}
+            onOpenProfile={(username) => setActiveProfileTarget(username)}
+            onDeletePost={handleDeleteNewsPost}
+            onToggleReaction={handleToggleNewsReaction}
+            onAddComment={handleAddNewsComment}
+            onDeleteComment={handleDeleteNewsComment}
+            onOpenCreateNews={
+              isFounderOrAbove(currentUser) ? () => setIsComposerModalOpen(true) : undefined
+            }
+          />
+        )}
+
         {/* Chat Section (With Custom Chat Background Support) */}
         <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#121316]">
           {/* Custom Chat Background Image Layer - ONLY covers chat area */}
@@ -332,6 +578,12 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
                   // Alternating background: even is slightly lighter dark, odd is darker underneath
                   const isAlternateBg = index % 2 === 1;
 
+                  const senderProfile =
+                    allUsers[msg.senderName.toLowerCase().trim()] ||
+                    (msg.senderName.toLowerCase().trim() === currentUser.username.toLowerCase().trim()
+                      ? currentUser
+                      : null);
+
                   return (
                     <ChatMessageItem
                       key={msg.id}
@@ -339,6 +591,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
                       isCurrentUser={isCurrentUser}
                       isAlternateBg={isAlternateBg}
                       canModerate={isFounderOrAbove(currentUser)}
+                      senderProfile={senderProfile}
                       onReply={handleReply}
                       onHide={handleHide}
                       onDelete={handleDelete}
@@ -477,6 +730,49 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({
           });
           setPreviewChatBackground(null);
         }}
+      />
+
+      {/* Hamburger Navigation Drawer */}
+      <HamburgerMenuDrawer
+        isOpen={isHamburgerOpen}
+        hasUnreadNews={hasUnreadNews}
+        onClose={() => setIsHamburgerOpen(false)}
+        onOpenDailyRewards={() => setIsDailyRewardsOpen(true)}
+        onOpenAvatarFrames={() => setIsAvatarFramesOpen(true)}
+        onOpenNews={handleOpenNews}
+      />
+
+      {/* Create News Modal (when opened from NewsPanel) */}
+      {isComposerModalOpen && isFounderOrAbove(currentUser) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs select-none animate-in fade-in duration-150">
+          <div className="absolute inset-0" onClick={() => setIsComposerModalOpen(false)} />
+          <div className="relative z-10 w-full max-w-md bg-[#161720] border border-[#2c2e3e] rounded-xs shadow-2xl p-4">
+            <NewsComposer
+              onPublish={async (content, mediaUrl, mediaType) => {
+                await handlePublishNews(content, mediaUrl, mediaType);
+                setIsComposerModalOpen(false);
+              }}
+              onCancel={() => setIsComposerModalOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Daily Rewards Modal */}
+      <DailyRewardsModal
+        isOpen={isDailyRewardsOpen}
+        currentUser={currentUser}
+        allUsers={allUsers}
+        onClose={() => setIsDailyRewardsOpen(false)}
+        onClaimReward={handleClaimDailyReward}
+      />
+
+      {/* Avatar Frame Studio Modal */}
+      <AvatarFrameStudioModal
+        isOpen={isAvatarFramesOpen}
+        currentUser={currentUser}
+        onClose={() => setIsAvatarFramesOpen(false)}
+        onSelectFrame={handleSelectAvatarFrame}
       />
     </div>
   );

@@ -1,15 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MoreHorizontal, CornerUpLeft, EyeOff, Trash2 } from 'lucide-react';
+import { MoreHorizontal, CornerUpLeft, EyeOff, Trash2, User, Bot, AlertCircle } from 'lucide-react';
 import { ChatMessage } from '../types/chat';
+import { ProfileData } from '../types/bio';
+import { UserAvatar } from './UserAvatar';
 import { RubyIcon, GoldIcon } from './CurrencyIcons';
-import { AvatarWithBorder } from './AvatarWithBorder';
+import { getTextStyleCSS } from '../utils/textStylePresets';
 
 interface ChatMessageItemProps {
   message: ChatMessage;
   isCurrentUser: boolean;
   isAlternateBg: boolean;
   canModerate?: boolean;
-  senderBanner?: string | null;
+  senderProfile?: ProfileData | null;
   onReply: (message: ChatMessage) => void;
   onHide: (id: string) => void;
   onDelete: (id: string) => void;
@@ -21,7 +23,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   isCurrentUser,
   isAlternateBg,
   canModerate,
-  senderBanner,
+  senderProfile,
   onReply,
   onHide,
   onDelete,
@@ -29,6 +31,13 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Determine effective styles (from message payload or live senderProfile)
+  const usernameStyleConfig = senderProfile?.usernameStyle || message.senderUsernameStyle;
+  const usernameInlineStyle = getTextStyleCSS(usernameStyleConfig, true);
+
+  const contentStyleConfig = senderProfile?.chatTextStyle || message.contentStyle;
+  const contentInlineStyle = getTextStyleCSS(contentStyleConfig, false);
 
   // Close menu on click outside
   useEffect(() => {
@@ -60,49 +69,98 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     }
   };
 
+  const isClearMessage =
+    message.isClearChatMessage ||
+    message.id.startsWith('bot-clear') ||
+    message.content.startsWith('This room has been cleared by') ||
+    message.content.startsWith('Chat cleared by');
+
+  if (isClearMessage) {
+    let clearedBy = message.clearedBy;
+    if (!clearedBy) {
+      const match = message.content.match(/(?:This room has been cleared by|Chat cleared by)\s+([^!]+)!?/i);
+      clearedBy = match ? match[1].trim() : 'Developer';
+    }
+
+    return (
+      <div className="w-full px-4 sm:px-6 py-2 transition-colors duration-100 flex items-center gap-2.5 select-none hover:bg-white/[0.02]">
+        {/* Bot PFP */}
+        <div className="w-5 h-5 rounded-full overflow-hidden shrink-0 bg-[#22242d] border border-neutral-600/50 flex items-center justify-center">
+          {message.senderAvatar ? (
+            <img
+              src={message.senderAvatar}
+              alt="Bot"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <AlertCircle className="w-3.5 h-3.5 text-neutral-400" />
+          )}
+        </div>
+
+        {/* Text: This room has been cleared by <bold name> */}
+        <div className="text-xs sm:text-[13px] text-[#8696a7] flex items-center gap-1.5 leading-none">
+          <span>This room has been cleared by</span>
+          <button
+            type="button"
+            onClick={() => onOpenProfile && onOpenProfile(clearedBy!)}
+            className="font-bold text-neutral-100 hover:underline cursor-pointer focus:outline-none"
+          >
+            {clearedBy}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`group relative w-full px-3 sm:px-6 py-2.5 sm:py-3.5 transition-colors duration-100 ${bgClass} hover:brightness-125 backdrop-blur-[1px]`}
+      className={`group relative w-full px-4 sm:px-6 py-3 sm:py-3.5 transition-colors duration-100 ${bgClass} hover:brightness-125 backdrop-blur-[1px]`}
     >
-      <div className="flex items-start gap-2.5 sm:gap-3 w-full">
-        {/* Avatar with Border - Clickable to open Profile */}
+      <div className="flex items-start gap-3 w-full">
+        {/* Avatar - Clickable to open Profile */}
         <button
           type="button"
           onClick={handleProfileClick}
           title={`View ${message.senderName}'s profile`}
-          className="shrink-0 cursor-pointer focus:outline-none relative flex items-center justify-center"
+          className="shrink-0 flex items-center justify-center cursor-pointer transition-transform hover:scale-105 focus:outline-none"
         >
-          {senderBanner && (
-            <div className="absolute -inset-1 pointer-events-none rounded-full overflow-hidden opacity-50 blur-[2px]">
-              <img
-                src={senderBanner}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover"
-              />
+          {message.isSystemBot ? (
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xs bg-[#242630] border border-[#343644] flex items-center justify-center">
+              <Bot className="w-5 h-5 text-purple-400" />
             </div>
+          ) : (
+            <UserAvatar
+              src={message.senderAvatar}
+              username={message.senderName}
+              frameId={message.senderAvatarFrame}
+              size="md"
+              shape="square"
+            />
           )}
-          <AvatarWithBorder
-            src={message.senderAvatar}
-            alt={message.senderName}
-            size="md"
-            isSystemBot={message.isSystemBot}
-            shape="circle"
-          />
         </button>
 
         {/* Message Body */}
-        <div className="flex-1 min-w-0 pr-6 sm:pr-8">
+        <div className="flex-1 min-w-0 pr-8">
           {/* Header: Name, Timestamp */}
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <button
               type="button"
               onClick={handleProfileClick}
-              className={`text-xs sm:text-sm font-semibold truncate hover:underline cursor-pointer text-left focus:outline-none ${
-                message.isSystemBot ? 'text-purple-300' : 'text-neutral-100'
-              }`}
+              className="text-left focus:outline-none cursor-pointer group/name inline-flex items-center"
             >
-              {message.senderName}
+              <span
+                style={usernameInlineStyle}
+                className={`text-xs sm:text-sm font-semibold truncate group-hover/name:underline tracking-normal ${
+                  message.isSystemBot
+                    ? 'text-purple-300'
+                    : !usernameStyleConfig?.colorValue
+                    ? 'text-neutral-100'
+                    : ''
+                }`}
+              >
+                {message.senderName}
+              </span>
             </button>
 
             {/* Timestamp */}
@@ -169,21 +227,26 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
             </div>
           ) : (
             /* Standard text message content */
-            <p className="text-xs sm:text-sm text-neutral-200 leading-relaxed break-words whitespace-pre-wrap select-text">
+            <p
+              style={contentInlineStyle}
+              className={`text-xs sm:text-sm leading-relaxed break-words whitespace-pre-wrap select-text tracking-normal ${
+                !contentStyleConfig?.colorValue ? 'text-neutral-200' : ''
+              }`}
+            >
               {message.content}
             </p>
           )}
         </div>
       </div>
 
-      {/* Action Menu Button (visible on mobile tap, hover on desktop) */}
-      <div className="absolute top-2.5 right-2 sm:right-4 flex items-center gap-1 z-10">
+      {/* Hover Action Menu Button */}
+      <div className="absolute top-2.5 right-4 flex items-center gap-1 z-10">
         <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={() => setMenuOpen((prev) => !prev)}
             aria-label="Message options"
-            className="p-1 sm:p-1 rounded-sm text-neutral-400 hover:text-neutral-100 hover:bg-[#252733] transition-colors opacity-70 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+            className="p-1 rounded-sm text-neutral-400 hover:text-neutral-100 hover:bg-[#252733] transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
           >
             <MoreHorizontal className="w-4 h-4" />
           </button>

@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Upload, X, RefreshCw, User, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { TextSegment, ProfileData } from '../types/bio';
+import { Upload, X, RefreshCw, User, Image as ImageIcon, Loader2, Palette, Sparkles, ChevronRight } from 'lucide-react';
+import { TextSegment, ProfileData, TextStyleConfig } from '../types/bio';
 import { BioEditor } from './BioEditor';
 import { ProfilePreview } from './ProfilePreview';
+import { StyleCustomizerModal } from './StyleCustomizerModal';
 import { uploadImageToCloudinary } from '../utils/cloudinary';
 
 interface ProfileSetupProps {
@@ -25,6 +26,14 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({
   const [banner, setBanner] = useState<string | null>(
     initialProfile?.banner || null
   );
+  const [usernameStyle, setUsernameStyle] = useState<TextStyleConfig | null>(
+    initialProfile?.usernameStyle || null
+  );
+  const [chatTextStyle, setChatTextStyle] = useState<TextStyleConfig | null>(
+    initialProfile?.chatTextStyle || null
+  );
+  const [isUsernameColorOpen, setIsUsernameColorOpen] = useState(false);
+  const [isTextColorOpen, setIsTextColorOpen] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [mood, setMood] = useState(initialProfile?.mood || '');
@@ -87,6 +96,8 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({
       gender: initialProfile?.gender,
       rank: initialProfile?.rank,
       chatBackground: initialProfile?.chatBackground,
+      usernameStyle,
+      chatTextStyle,
       wallet: initialProfile?.wallet,
       effects: initialProfile?.effects || {
         starEffect: true,
@@ -289,7 +300,69 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({
             />
           </div>
 
-          {/* 5. RICH BIO EDITOR */}
+          {/* 5. USERNAME & MESSAGE TEXT STYLING */}
+          <div className="flex flex-col gap-2 text-left">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-neutral-300">
+                Chat Customization
+              </label>
+              <span className="text-[11px] text-neutral-500">
+                Colors, gradients, neons & 15+ fonts
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Username Color */}
+              <button
+                type="button"
+                onClick={() => setIsUsernameColorOpen(true)}
+                className="flex items-center justify-between p-3 bg-[#15161a] hover:bg-[#1d1f27] border border-[#2a2b33] hover:border-zinc-500 rounded-md transition-all cursor-pointer text-left group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                    <Palette className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-neutral-200 block">
+                      Username Color
+                    </span>
+                    <span className="text-[10px] text-neutral-400">
+                      {usernameStyle?.colorType
+                        ? `${usernameStyle.colorType} color`
+                        : 'Default style'}
+                    </span>
+                  </div>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-neutral-500 group-hover:text-neutral-300" />
+              </button>
+
+              {/* Text Color */}
+              <button
+                type="button"
+                onClick={() => setIsTextColorOpen(true)}
+                className="flex items-center justify-between p-3 bg-[#15161a] hover:bg-[#1d1f27] border border-[#2a2b33] hover:border-zinc-500 rounded-md transition-all cursor-pointer text-left group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-neutral-200 block">
+                      Text Color
+                    </span>
+                    <span className="text-[10px] text-neutral-400">
+                      {chatTextStyle?.colorType
+                        ? `${chatTextStyle.colorType} style`
+                        : 'Default style'}
+                    </span>
+                  </div>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-neutral-500 group-hover:text-neutral-300" />
+              </button>
+            </div>
+          </div>
+
+          {/* 6. RICH BIO EDITOR */}
           <BioEditor
             segments={bioSegments}
             onChange={(newSegments) => setBioSegments(newSegments)}
@@ -320,6 +393,32 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({
         </div>
 
       </div>
+
+      {/* Username Color Customizer Modal */}
+      {isUsernameColorOpen && (
+        <StyleCustomizerModal
+          isOpen={isUsernameColorOpen}
+          type="username"
+          initialStyle={usernameStyle}
+          username={username || 'Member'}
+          avatarUrl={profilePicture}
+          onClose={() => setIsUsernameColorOpen(false)}
+          onSave={(newStyle) => setUsernameStyle(newStyle)}
+        />
+      )}
+
+      {/* Text Color Customizer Modal */}
+      {isTextColorOpen && (
+        <StyleCustomizerModal
+          isOpen={isTextColorOpen}
+          type="text"
+          initialStyle={chatTextStyle}
+          username={username || 'Member'}
+          avatarUrl={profilePicture}
+          onClose={() => setIsTextColorOpen(false)}
+          onSave={(newStyle) => setChatTextStyle(newStyle)}
+        />
+      )}
     </div>
   );
 };

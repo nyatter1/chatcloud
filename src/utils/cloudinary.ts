@@ -207,3 +207,42 @@ export async function uploadAudioToCloudinary(
     xhr.send(formData);
   });
 }
+
+/**
+ * Uploads media (image, gif, or video) to Cloudinary and returns { url, type }.
+ */
+export async function uploadNewsMediaToCloudinary(
+  file: File
+): Promise<{ url: string; type: 'image' | 'video' | 'gif' }> {
+  const isVideo = file.type.startsWith('video/');
+  const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
+  const mediaType: 'image' | 'video' | 'gif' = isVideo ? 'video' : isGif ? 'gif' : 'image';
+
+  const endpoint = isVideo ? AUDIO_UPLOAD_URL : UPLOAD_URL;
+  const formData = new FormData();
+  formData.append('upload_preset', UPLOAD_PRESET);
+  formData.append('file', file);
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      body: formData,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { url: data.secure_url || data.url, type: mediaType };
+    }
+  } catch (err) {
+    console.warn('Media upload to Cloudinary failed, falling back to local data URL:', err);
+  }
+
+  // Fallback to local Data URL
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve({ url: reader.result as string, type: mediaType });
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}

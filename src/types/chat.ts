@@ -1,3 +1,5 @@
+import { TextStyleConfig } from './bio';
+
 export interface GambleResultPayload {
   command: 'dice' | 'allin' | 'coinflip';
   username: string;
@@ -16,7 +18,13 @@ export interface ChatMessage {
   senderName: string;
   senderHandle: string;
   senderAvatar: string | null;
+  senderAvatarFrame?: string | null;
+  senderCustomRankName?: string | null;
+  senderUsernameStyle?: TextStyleConfig | null;
+  contentStyle?: TextStyleConfig | null;
   isSystemBot?: boolean;
+  isClearChatMessage?: boolean;
+  clearedBy?: string;
   content: string;
   timestamp: number;
   formattedTime: string;

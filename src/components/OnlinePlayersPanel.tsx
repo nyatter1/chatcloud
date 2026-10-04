@@ -4,6 +4,8 @@ import { ProfileData } from '../types/bio';
 import { SYSTEM_BOT } from '../constants/systemBot';
 import { getRankConfig } from '../constants/ranks';
 import { RankId } from '../types/ranks';
+import { UserAvatar } from './UserAvatar';
+import { getTextStyleCSS } from '../utils/textStylePresets';
 
 interface OnlinePlayersPanelProps {
   currentUser: ProfileData;
@@ -35,25 +37,34 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
       id: 'system',
       name: SYSTEM_BOT.name,
       avatar: SYSTEM_BOT.avatar,
+      avatarFrame: null,
       isSystemBot: true,
       mood: '',
       rank: SYSTEM_BOT.rank as RankId,
+      customRankName: null,
+      usernameStyle: null,
     },
     {
       id: currentUser.username,
       name: currentUser.username,
       avatar: currentUser.profilePicture || allUsers[currentUser.username.toLowerCase().trim()]?.profilePicture || null,
+      avatarFrame: currentUser.avatarFrame || currentUser.effects?.pfpBorder || allUsers[currentUser.username.toLowerCase().trim()]?.avatarFrame || null,
       isSystemBot: false,
       mood: currentUser.mood?.trim() || '',
       rank: currentUserRank,
+      customRankName: currentUser.customRankName || null,
+      usernameStyle: currentUser.usernameStyle || allUsers[currentUser.username.toLowerCase().trim()]?.usernameStyle || null,
     },
     ...otherUsersList.map((u) => ({
       id: u.username,
       name: u.username,
       avatar: u.profilePicture,
+      avatarFrame: u.avatarFrame || u.effects?.pfpBorder || null,
       isSystemBot: false,
       mood: u.mood?.trim() || '',
       rank: (u.rank || (u.username.toLowerCase() === 'null' ? 'DEV' : 'VIP')) as RankId,
+      customRankName: u.customRankName || null,
+      usernameStyle: u.usernameStyle || null,
     })),
   ];
 
@@ -82,6 +93,7 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
         <div className="flex flex-col gap-1.5">
           {onlineUsers.map((user) => {
             const rankConfig = getRankConfig(user.rank);
+            const nameStyle = getTextStyleCSS(user.usernameStyle, true);
 
             return (
               <button
@@ -91,23 +103,23 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
                 className="w-full flex items-center justify-between p-2 rounded-md hover:bg-[#1c1d23] transition-colors cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-zinc-600 gap-2"
               >
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  {/* Profile Picture */}
-                  <div className="w-8 h-8 rounded-full overflow-hidden bg-[#242630] border border-[#343644] shrink-0 flex items-center justify-center">
-                    {user.avatar ? (
-                      <img
-                        src={user.avatar}
-                        alt={user.name}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <User className="w-4 h-4 text-neutral-400" />
-                    )}
-                  </div>
+                  {/* Profile Picture with Avatar Frame */}
+                  <UserAvatar
+                    src={user.avatar}
+                    username={user.name}
+                    frameId={user.avatarFrame}
+                    size="sm"
+                    shape="circle"
+                  />
 
                   {/* Name & Mood */}
                   <div className="flex flex-col min-w-0 flex-1">
-                    <span className="text-xs font-semibold text-neutral-200 truncate">
+                    <span
+                      style={nameStyle}
+                      className={`text-xs font-semibold truncate tracking-normal ${
+                        !user.usernameStyle?.colorValue ? 'text-neutral-200' : ''
+                      }`}
+                    >
                       {user.name}
                     </span>
                     {user.mood ? (
@@ -122,8 +134,8 @@ export const OnlinePlayersPanel: React.FC<OnlinePlayersPanelProps> = ({
                 {rankConfig && (
                   <img
                     src={rankConfig.iconUrl}
-                    alt={rankConfig.name}
-                    title={rankConfig.name}
+                    alt={user.customRankName?.trim() || rankConfig.name}
+                    title={user.customRankName?.trim() || rankConfig.name}
                     referrerPolicy="no-referrer"
                     className="w-4 h-4 object-contain shrink-0"
                   />

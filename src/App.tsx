@@ -10,6 +10,7 @@ import { ProfileSetup } from './components/ProfileSetup';
 import { ChatScreen } from './components/ChatScreen';
 import { AdminPanel } from './components/AdminPanel';
 import { ProfileModal } from './components/ProfileModal';
+import { ChatlaxyLogo } from './components/ChatlaxyLogo';
 import { ProfileData } from './types/bio';
 import { RankId } from './types/ranks';
 import { addAuditLog } from './utils/auditLogger';
@@ -105,6 +106,7 @@ export default function App() {
       effects: {
         starEffect: true,
         borderEffect: 'subtle-glow',
+        pfpBorder: 'square-neon',
       },
     };
 
@@ -236,11 +238,9 @@ export default function App() {
   if (screenStep === 'profile_setup') {
     return (
       <main className="min-h-screen w-full bg-[#121316] text-neutral-100 flex flex-col items-center justify-start selection:bg-zinc-800 selection:text-white">
-        {/* Minimal top bar with wordmark */}
+        {/* Minimal top bar with logo */}
         <header className="w-full px-6 py-4 flex items-center justify-between border-b border-[#23242a]">
-          <span className="text-xl font-semibold tracking-tight text-neutral-100 select-none">
-            chatlaxy
-          </span>
+          <ChatlaxyLogo size="sm" />
           <span className="text-xs text-neutral-500 font-mono">
             Profile Setup
           </span>
@@ -261,12 +261,10 @@ export default function App() {
       {/* Central Auth Container */}
       <div className="w-full max-w-[420px] flex flex-col items-center">
         
-        {/* Pure Text Branding Header - NO LOGO */}
-        <div className="text-center mb-6">
-          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-neutral-100 select-none">
-            chatlaxy
-          </h1>
-          <p className="text-sm text-neutral-400 font-normal tracking-wide mt-1.5">
+        {/* Branding Header with Logo */}
+        <div className="flex flex-col items-center text-center mb-6">
+          <ChatlaxyLogo size="lg" className="mb-2" />
+          <p className="text-sm text-neutral-400 font-normal tracking-wide mt-1">
             Chat. Connect. Chill.
           </p>
         </div>

@@ -14,6 +14,29 @@ import {
 import { ProfileData } from '../types/bio';
 import { ChatMessage } from '../types/chat';
 import { AuditLogEntry } from '../utils/auditLogger';
+import { NewsPost } from '../types/news';
+
+// ----------------------------------------------------
+// HELPER: Remove undefined properties recursively for Firestore
+// ----------------------------------------------------
+function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map((item) => cleanForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, val] of Object.entries(data as Record<string, any>)) {
+      if (val !== undefined) {
+        cleaned[key] = cleanForFirestore(val);
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
 
 // ----------------------------------------------------
 // 1. USERS COLLECTION
@@ -23,15 +46,12 @@ const USERS_COLLECTION = 'users';
 export async function saveUserToFirestore(profile: ProfileData): Promise<void> {
   const docId = profile.username.toLowerCase().trim();
   const userRef = doc(db, USERS_COLLECTION, docId);
-  await setDoc(
-    userRef,
-    {
-      ...profile,
-      usernameKey: docId,
-      lastActive: Date.now(),
-    },
-    { merge: true }
-  );
+  const cleanedData = cleanForFirestore({
+    ...profile,
+    usernameKey: docId,
+    lastActive: Date.now(),
+  });
+  await setDoc(userRef, cleanedData, { merge: true });
 }
 
 export async function getUserFromFirestore(username: string): Promise<ProfileData | null> {
@@ -103,7 +123,8 @@ export function subscribeToMessages(callback: (messages: ChatMessage[]) => void)
 
 export async function sendMessageToFirestore(message: ChatMessage): Promise<void> {
   const msgRef = doc(db, MESSAGES_COLLECTION, message.id);
-  await setDoc(msgRef, message);
+  const cleaned = cleanForFirestore(message);
+  await setDoc(msgRef, cleaned);
 }
 
 export async function deleteMessageFromFirestore(messageId: string): Promise<void> {
@@ -193,4 +214,47 @@ export async function setRiggedUserInFirestore(username: string, rigged: boolean
     filtered.push(cleanName);
   }
   await setDoc(ref, { users: filtered });
+}
+
+// ----------------------------------------------------
+// 5. NEWS COLLECTION
+// ----------------------------------------------------
+const NEWS_COLLECTION = 'news';
+
+export function subscribeToNews(callback: (posts: NewsPost[]) => void) {
+  const q = query(collection(db, NEWS_COLLECTION), orderBy('timestamp', 'desc'), limit(50));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const posts: NewsPost[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as NewsPost;
+        posts.push({
+          ...data,
+          id: docSnap.id,
+          reactions: data.reactions || { like: [], dislike: [], heart: [], laugh: [] },
+          comments: data.comments || [],
+        });
+      });
+      callback(posts);
+    },
+    (error) => {
+      console.error('Firestore news subscription error:', error);
+    }
+  );
+}
+
+export async function createNewsPostInFirestore(post: NewsPost): Promise<void> {
+  const ref = doc(db, NEWS_COLLECTION, post.id);
+  await setDoc(ref, post);
+}
+
+export async function deleteNewsPostFromFirestore(postId: string): Promise<void> {
+  const ref = doc(db, NEWS_COLLECTION, postId);
+  await deleteDoc(ref);
+}
+
+export async function updateNewsPostInFirestore(post: NewsPost): Promise<void> {
+  const ref = doc(db, NEWS_COLLECTION, post.id);
+  await setDoc(ref, post, { merge: true });
 }

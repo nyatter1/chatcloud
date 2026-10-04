@@ -26,6 +26,12 @@ import { uploadImageToCloudinary, uploadAudioToCloudinary } from '../utils/cloud
 import { saveUserToFirestore, getUserFromFirestore } from '../services/firestoreService';
 import { ProfileEffectCanvas } from './ProfileEffectCanvas';
 import { ProfileEffectsModal } from './ProfileEffectsModal';
+import { ProfileBordersModal } from './ProfileBordersModal';
+import { CustomRankNameModal } from './CustomRankNameModal';
+import { StyleCustomizerModal } from './StyleCustomizerModal';
+import { TextStyleConfig } from '../types/bio';
+import { UserAvatar } from './UserAvatar';
+import { getBorderConfig } from '../types/profileBorders';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -49,6 +55,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<ProfileTab>('info');
   const [editMode, setEditMode] = useState<EditMode>('view');
+  const [editSubTab, setEditSubTab] = useState<'info' | 'customisation'>('info');
 
   // Active profile state
   const [activeProfile, setActiveProfile] = useState<ProfileData>(currentUser);
@@ -69,6 +76,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
   const [isProfileEffectsOpen, setIsProfileEffectsOpen] = useState(false);
+  const [isProfileBordersOpen, setIsProfileBordersOpen] = useState(false);
+  const [isCustomRankNameOpen, setIsCustomRankNameOpen] = useState(false);
+  const [isUsernameColorOpen, setIsUsernameColorOpen] = useState(false);
+  const [isTextColorOpen, setIsTextColorOpen] = useState(false);
 
   const pfpInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -396,6 +407,44 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     saveProfileData(updated, `profile effect to "${effectId || 'none'}"`);
   };
 
+  // Save Profile Border
+  const handleSaveProfileBorder = (borderId: string | null) => {
+    const updated = {
+      ...activeProfile,
+      profileBorder: borderId,
+    };
+    saveProfileData(updated, `profile border to "${borderId || 'none'}"`);
+  };
+
+  // Save Custom Rank Name
+  const handleSaveCustomRankName = (customName: string | null) => {
+    const updated = {
+      ...activeProfile,
+      customRankName: customName,
+    };
+    saveProfileData(updated, `custom rank name to "${customName || 'default'}"`);
+  };
+
+  // Save Username Color & Font Style
+  const handleSaveUsernameStyle = (style: TextStyleConfig | null) => {
+    const updated = {
+      ...activeProfile,
+      usernameStyle: style,
+    };
+    saveProfileData(updated, 'username color and font style');
+  };
+
+  // Save Message Text Color & Font Style
+  const handleSaveChatTextStyle = (style: TextStyleConfig | null) => {
+    const updated = {
+      ...activeProfile,
+      chatTextStyle: style,
+    };
+    saveProfileData(updated, 'chat message text color and font style');
+  };
+
+  const activeBorderConfig = getBorderConfig(activeProfile.profileBorder);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
       {/* Click backdrop to close */}
@@ -437,7 +486,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
       {/* Main Profile Dialog Window */}
       <div
-        className="relative z-10 w-full max-w-sm sm:max-w-md bg-[#141519] border border-[#2c2d38] rounded-xs shadow-2xl shadow-black overflow-hidden flex flex-col text-left select-none animate-in zoom-in-95 duration-150"
+        className={`relative z-10 w-full max-w-sm sm:max-w-md bg-[#141519] rounded-xs shadow-2xl overflow-hidden flex flex-col text-left select-none animate-in zoom-in-95 duration-150 transition-all ${activeBorderConfig.cardClasses}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ================================================== */}
@@ -544,19 +593,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           {/* Avatar Area with Sharp Square Frame */}
           <div className="relative z-20 -mt-10 mb-3 flex items-end justify-between">
             <div className="relative group shrink-0">
-              {/* Square Avatar container */}
-              <div className="w-20 h-20 rounded-xs border-2 border-[#141519] bg-[#22242c] overflow-hidden flex items-center justify-center shadow-lg ring-1 ring-[#3a3b48]">
-                {activeProfile.profilePicture ? (
-                  <img
-                    src={activeProfile.profilePicture}
-                    alt={activeProfile.username}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User className="w-10 h-10 text-neutral-400" />
-                )}
-              </div>
+              {/* Square Avatar container with Avatar Frame */}
+              <UserAvatar
+                src={activeProfile.profilePicture}
+                username={activeProfile.username}
+                frameId={activeProfile.avatarFrame || activeProfile.effects?.pfpBorder}
+                size="xl"
+                shape="square"
+              />
 
               {/* PFP Controls in edit mode */}
               {canEdit && editMode !== 'view' && (
@@ -605,7 +649,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   className="w-4 h-4 object-contain shrink-0"
                 />
                 <span className="text-xs font-bold text-white tracking-wide">
-                  {rankConfig.name}
+                  {activeProfile.customRankName?.trim() || rankConfig.name}
                 </span>
               </div>
             )}
@@ -738,55 +782,125 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 </button>
               </div>
 
-              <div className="flex flex-col gap-1 text-xs">
-                {/* Info option ONLY on own profile */}
-                {isOwner && (
-                  <button
-                    type="button"
-                    onClick={() => setEditMode('edit_info')}
-                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
-                  >
-                    <span>Edit info</span>
-                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
-                  </button>
-                )}
-
+              {/* Editor Tab Headings: Info | Customisation */}
+              <div className="flex items-center border-b border-[#25262f] gap-1 mb-2">
                 <button
                   type="button"
-                  onClick={() => setEditMode('edit_bio')}
-                  className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  onClick={() => setEditSubTab('info')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-t-xs border-b-2 transition-colors cursor-pointer ${
+                    editSubTab === 'info'
+                      ? 'border-purple-500 text-neutral-100 bg-[#1b1c23]'
+                      : 'border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-[#181920]'
+                  }`}
                 >
-                  <span>Edit bio</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  Info
                 </button>
-
                 <button
                   type="button"
-                  onClick={() => setEditMode('edit_mood')}
-                  className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  onClick={() => setEditSubTab('customisation')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-t-xs border-b-2 transition-colors cursor-pointer ${
+                    editSubTab === 'customisation'
+                      ? 'border-purple-500 text-neutral-100 bg-[#1b1c23]'
+                      : 'border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-[#181920]'
+                  }`}
                 >
-                  <span>Edit mood</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setEditMode('edit_music')}
-                  className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
-                >
-                  <span>Profile Music</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsProfileEffectsOpen(true)}
-                  className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
-                >
-                  <span>Profile Effects</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  Customisation
                 </button>
               </div>
+
+              {/* Tab 1: Info & Basic Things */}
+              {editSubTab === 'info' && (
+                <div className="flex flex-col gap-1 text-xs animate-in fade-in duration-100">
+                  {/* Info option ONLY on own profile */}
+                  {isOwner && (
+                    <button
+                      type="button"
+                      onClick={() => setEditMode('edit_info')}
+                      className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                    >
+                      <span>Edit info</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setEditMode('edit_bio')}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span>Edit bio</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditMode('edit_mood')}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span>Edit mood</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
+                </div>
+              )}
+
+              {/* Tab 2: Customisation Features & Options */}
+              {editSubTab === 'customisation' && (
+                <div className="flex flex-col gap-1 text-xs animate-in fade-in duration-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsUsernameColorOpen(true)}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span>Username Color</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsTextColorOpen(true)}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span>Text Color</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditMode('edit_music')}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span>Profile Music</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsProfileEffectsOpen(true)}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span>Profile Effects</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsProfileBordersOpen(true)}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span>Profile Borders</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomRankNameOpen(true)}
+                    className="w-full flex items-center justify-between p-2.5 bg-[#1a1c22] hover:bg-[#22242c] text-neutral-200 rounded-xs border border-[#272932] transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span>Custom Rank Name</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1071,6 +1185,58 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             currentUser={currentUser}
             onClose={() => setIsProfileEffectsOpen(false)}
             onSaveEffect={handleSaveProfileEffect}
+          />
+        )}
+
+        {/* Profile Borders Modal */}
+        {isProfileBordersOpen && (
+          <ProfileBordersModal
+            isOpen={isProfileBordersOpen}
+            currentUser={activeProfile}
+            onClose={() => setIsProfileBordersOpen(false)}
+            onSaveBorder={handleSaveProfileBorder}
+          />
+        )}
+
+        {/* Custom Rank Name Modal */}
+        {isCustomRankNameOpen && (
+          <CustomRankNameModal
+            isOpen={isCustomRankNameOpen}
+            currentCustomRankName={activeProfile.customRankName}
+            userRank={
+              (activeProfile.rank ||
+                (activeProfile.username.toLowerCase() === 'null' ? 'DEV' : 'VIP')) as RankId
+            }
+            onClose={() => setIsCustomRankNameOpen(false)}
+            onSave={handleSaveCustomRankName}
+          />
+        )}
+
+        {/* Username Color & Font Customizer Modal */}
+        {isUsernameColorOpen && (
+          <StyleCustomizerModal
+            isOpen={isUsernameColorOpen}
+            type="username"
+            initialStyle={activeProfile.usernameStyle}
+            username={activeProfile.username}
+            avatarUrl={activeProfile.profilePicture}
+            avatarFrame={activeProfile.avatarFrame || activeProfile.effects?.pfpBorder}
+            onClose={() => setIsUsernameColorOpen(false)}
+            onSave={handleSaveUsernameStyle}
+          />
+        )}
+
+        {/* Text / Message Color & Font Customizer Modal */}
+        {isTextColorOpen && (
+          <StyleCustomizerModal
+            isOpen={isTextColorOpen}
+            type="text"
+            initialStyle={activeProfile.chatTextStyle}
+            username={activeProfile.username}
+            avatarUrl={activeProfile.profilePicture}
+            avatarFrame={activeProfile.avatarFrame || activeProfile.effects?.pfpBorder}
+            onClose={() => setIsTextColorOpen(false)}
+            onSave={handleSaveChatTextStyle}
           />
         )}
       </div>
